@@ -1,0 +1,25 @@
+{
+  "name": "St. Arnold's High School Portal",
+  "short_name": "St. Arnold's",
+  "description": "St. Arnold's High School Godhra — Study Material & Announcements Portal",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a2a6c",
+  "theme_color": "#1a2a6c",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

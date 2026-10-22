@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>St. Arnold's High School - Godhra | Study Material Portal</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a2a6c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="St. Arnold's">
+<link rel="apple-touch-icon" href="icon-192.png">
+
 
 <!-- Firebase SDK (v10 compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -1181,7 +1188,18 @@ function escapeHtml(str){
 }
 
 /* ================= INITIALIZATION ================= */
+
+/* ================= PWA SERVICE WORKER REGISTRATION ================= */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('PWA ServiceWorker registered:', reg.scope))
+      .catch(err => console.warn('PWA ServiceWorker error:', err));
+  });
+}
+
 openIDB().then(()=>{
+
   buildStudentGrid();
 });
 </script>
