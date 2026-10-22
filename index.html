@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
 <style>
   * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Arial, sans-serif; }
@@ -119,6 +120,38 @@
   .item-file .fmeta { font-size:12px; color:#666; width:100%; }
   .item-meta { font-size:12px; color:#777; margin-top:6px; }
   
+  
+  /* PDF.js Inline Viewer Modal */
+  .pdf-modal {
+    position:fixed; top:0; left:0; width:100vw; height:100vh;
+    z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .pdf-modal-backdrop {
+    position:absolute; top:0; left:0; width:100%; height:100%;
+    background:rgba(15, 23, 42, 0.75); backdrop-filter:blur(4px);
+  }
+  .pdf-modal-card {
+    position:relative; z-index:2; background:#ffffff; border-radius:16px;
+    width:100%; max-width:880px; max-height:92vh; display:flex; flex-direction:column;
+    box-shadow:0 20px 50px rgba(0,0,0,0.4); overflow:hidden;
+  }
+  .pdf-modal-header {
+    background:linear-gradient(135deg, var(--navy), #2d3f8f); color:#ffffff;
+    padding:14px 18px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px;
+  }
+  .pdf-modal-title { font-size:16px; font-weight:700; display:flex; align-items:center; gap:8px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pdf-modal-actions { display:flex; align-items:center; gap:8px; }
+  .pdf-controls {
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    padding:8px 14px; background:#eef2ff; border-bottom:1px solid #d5dcf5; flex-wrap:wrap; font-size:13px; font-weight:600; color:var(--navy);
+  }
+  .pdf-canvas-container {
+    flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column;
+    align-items:center; background:#525659; min-height:400px;
+  }
+  #pdfCanvas { max-width:100%; height:auto; box-shadow:0 4px 18px rgba(0,0,0,0.3); border-radius:4px; }
+
   /* Search Box */
   .search-box { margin-bottom:14px; }
   .search-box input {
@@ -325,6 +358,35 @@
     <br>
     <button class="btn btn-back" onclick="showView('admin-class')">← Change Class</button>
     <button class="btn btn-back" onclick="adminLogout()">🏠 Logout</button>
+  </div>
+
+
+  <!-- PDF.JS INLINE VIEWER MODAL -->
+  <div id="pdfViewerModal" class="pdf-modal" style="display:none;">
+    <div class="pdf-modal-backdrop" onclick="closePdfModal()"></div>
+    <div class="pdf-modal-card">
+      <div class="pdf-modal-header">
+        <div class="pdf-modal-title">
+          <span>📄</span>
+          <span id="pdfModalFileName">Document Viewer</span>
+        </div>
+        <div class="pdf-modal-actions">
+          <a id="pdfModalDownloadBtn" class="btn btn-gold" href="#" download target="_blank">⬇ Download</a>
+          <button class="btn btn-back" onclick="closePdfModal()">✖ Close</button>
+        </div>
+      </div>
+      <div class="pdf-controls">
+        <button class="btn btn-back" style="padding:6px 12px;font-size:12px;" onclick="changePdfPage(-1)">◀ Prev</button>
+        <span id="pdfPageNum">Page 1 / 1</span>
+        <button class="btn btn-back" style="padding:6px 12px;font-size:12px;" onclick="changePdfPage(1)">Next ▶</button>
+        <button class="btn btn-back" style="padding:6px 12px;font-size:12px;" onclick="zoomPdf(0.2)">🔍 Zoom +</button>
+        <button class="btn btn-back" style="padding:6px 12px;font-size:12px;" onclick="zoomPdf(-0.2)">🔍 Zoom -</button>
+      </div>
+      <div class="pdf-canvas-container" id="pdfCanvasContainer">
+        <div id="pdfLoadingSpinner" class="empty" style="color:#ffffff;">Loading PDF document...</div>
+        <canvas id="pdfCanvas" style="display:none;"></canvas>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -583,7 +645,7 @@ async function renderStudentList(cls){
           <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
           <span class="fmeta">PDF Document${sizeStr}</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
-            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}', '${escapeHtml(item.fileName || item.title)}')">👁 View</button>
             <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
           </div>
         </div>`;
@@ -718,7 +780,7 @@ function filterAndRenderTeacher(query){
           <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
           <span class="fmeta">PDF Document${sizeStr}</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
-            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}', '${escapeHtml(item.fileName || item.title)}')">👁 View</button>
             <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
           </div>
         </div>`;
@@ -910,7 +972,7 @@ function filterAndRenderAdmin(query){
           <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
           <span class="fmeta">PDF Document${sizeStr}</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
-            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}', '${escapeHtml(item.fileName || item.title)}')">👁 View</button>
             <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
           </div>
         </div>`;
@@ -1020,10 +1082,92 @@ async function deleteAdminItem(id, storagePath){
   await renderAdminList(currentClass);
 }
 
-/* ================= VIEW FILE HELPER ================= */
-function viewFile(url){
+/* ================= PDF.JS INLINE VIEWER ================= */
+let currentPdfDoc = null;
+let currentPdfPage = 1;
+let currentPdfScale = 1.2;
+let currentPdfUrl = null;
+
+async function viewFile(url, fileName){
   if(!url) return;
-  window.open(url, '_blank');
+  currentPdfUrl = url;
+  const modal = document.getElementById('pdfViewerModal');
+  const titleEl = document.getElementById('pdfModalFileName');
+  const dlBtn = document.getElementById('pdfModalDownloadBtn');
+  const spinner = document.getElementById('pdfLoadingSpinner');
+  const canvas = document.getElementById('pdfCanvas');
+
+  titleEl.textContent = fileName || 'Study Material PDF';
+  dlBtn.href = url;
+  dlBtn.download = fileName || 'document.pdf';
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+
+  spinner.style.display = 'block';
+  spinner.innerHTML = 'Loading PDF document...';
+  canvas.style.display = 'none';
+
+  try {
+    if(window.pdfjsLib){
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const loadingTask = pdfjsLib.getDocument({ url: url, withCredentials: false });
+      currentPdfDoc = await loadingTask.promise;
+      currentPdfPage = 1;
+      currentPdfScale = window.innerWidth < 600 ? 0.8 : 1.2;
+      spinner.style.display = 'none';
+      canvas.style.display = 'block';
+      renderPdfPage(currentPdfPage);
+    } else {
+      window.open(url, '_blank');
+      closePdfModal();
+    }
+  } catch(err){
+    console.warn("PDF.js render fallback:", err);
+    spinner.innerHTML = `
+      <p style="color:#ffffff;margin-bottom:12px;">Unable to render inline (${escapeHtml(err.message)})</p>
+      <a class="btn btn-gold" href="${url}" target="_blank">Open PDF in New Tab ↗</a>
+    `;
+  }
+}
+
+function renderPdfPage(num){
+  if(!currentPdfDoc) return;
+  currentPdfDoc.getPage(num).then(page => {
+    const canvas = document.getElementById('pdfCanvas');
+    const ctx = canvas.getContext('2d');
+    const viewport = page.getViewport({ scale: currentPdfScale });
+
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    const renderContext = {
+      canvasContext: ctx,
+      viewport: viewport
+    };
+    page.render(renderContext);
+    document.getElementById('pdfPageNum').textContent = `Page ${num} / ${currentPdfDoc.numPages}`;
+  });
+}
+
+function changePdfPage(delta){
+  if(!currentPdfDoc) return;
+  const newPage = currentPdfPage + delta;
+  if(newPage >= 1 && newPage <= currentPdfDoc.numPages){
+    currentPdfPage = newPage;
+    renderPdfPage(currentPdfPage);
+  }
+}
+
+function zoomPdf(delta){
+  currentPdfScale = Math.max(0.5, Math.min(2.5, currentPdfScale + delta));
+  renderPdfPage(currentPdfPage);
+}
+
+function closePdfModal(){
+  const modal = document.getElementById('pdfViewerModal');
+  if(modal) modal.style.display = 'none';
+  document.body.style.overflow = 'auto';
+  currentPdfDoc = null;
 }
 
 function escapeHtml(str){
