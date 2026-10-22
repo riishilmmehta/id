@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 
 <style>
   * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Arial, sans-serif; }
@@ -117,6 +118,15 @@
   .item-file .fname { flex:1; min-width:140px; font-weight:600; word-break:break-all; }
   .item-file .fmeta { font-size:12px; color:#666; width:100%; }
   .item-meta { font-size:12px; color:#777; margin-top:6px; }
+  
+  /* Search Box */
+  .search-box { margin-bottom:14px; }
+  .search-box input {
+    width:100%; padding:11px 14px; border:1.5px solid #c3cbe8; border-radius:10px;
+    font-size:14px; outline:none; background:#ffffff; transition:.2s;
+  }
+  .search-box input:focus { border-color:var(--navy); box-shadow:0 0 0 3px rgba(26,42,108,.1); }
+
   .empty { text-align:center; padding:28px; color:#777; font-style:italic; }
 
   /* Form container */
@@ -182,6 +192,9 @@
   <div id="view-student-files" class="card" style="display:none;">
     <span class="badge">STUDENT PANEL</span>
     <h2 id="studentClassTitle">Class Study Material & Announcements</h2>
+        <div class="search-box">
+      <input type="text" id="studentSearchInput" placeholder="🔍 Search study material by topic, file name, or text..." oninput="filterAndRenderStudent(this.value)">
+    </div>
     <div id="studentFileList"></div>
     <br>
     <button class="btn btn-back" onclick="showView('student-class')">← Change Class</button>
@@ -241,7 +254,10 @@
       <div class="error" id="teacherPostError" style="margin-top:8px;"></div>
     </div>
 
-    <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Active Announcements & Material</h3>
+        <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Active Announcements & Material</h3>
+    <div class="search-box">
+      <input type="text" id="teacherSearchInput" placeholder="🔍 Search announcements and files by topic, name, or text..." oninput="filterAndRenderTeacher(this.value)">
+    </div>
     <div id="teacherFileList"></div>
     <br>
     <button class="btn btn-back" onclick="showView('teacher-class')">← Change Class</button>
@@ -301,7 +317,10 @@
       <div class="error" id="uploadError" style="margin-top:8px;"></div>
     </div>
 
-    <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Uploaded Files & Announcements</h3>
+        <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Uploaded Files & Announcements</h3>
+    <div class="search-box">
+      <input type="text" id="adminSearchInput" placeholder="🔍 Search files and announcements by topic, name, or text..." oninput="filterAndRenderAdmin(this.value)">
+    </div>
     <div id="adminFileList"></div>
     <br>
     <button class="btn btn-back" onclick="showView('admin-class')">← Change Class</button>
@@ -629,8 +648,12 @@ function buildTeacherGrid(){
     sel.appendChild(o);
   });
 }
+let teacherCachedItems = [];
+
 async function openTeacherClass(c){
   currentClass = c;
+  const sInput = document.getElementById('teacherSearchInput');
+  if(sInput) sInput.value = '';
   document.getElementById('teacherPostClass').value = c;
   document.getElementById('teacherClassTitle').textContent = (c === 0)
     ? '📢 School-Wide Announcements & Material'
@@ -645,16 +668,40 @@ async function renderTeacherList(cls){
   const all = await fetchAllItems();
 
   // Teacher sees: Target is 'Teacher' or 'All' OR posted by Teacher (including Teacher -> Admin notes)
-  const items = all.filter(item => {
+  teacherCachedItems = all.filter(item => {
     const roleMatch = (item.target === 'Teacher' || item.target === 'All' || item.authorRole === 'Teacher');
     if(!roleMatch) return false;
     if(cls === 0) return true;
     return item.cls === cls || item.cls === 0;
   }).sort((a,b)=>b.ts - a.ts);
 
+  const query = document.getElementById('teacherSearchInput') ? document.getElementById('teacherSearchInput').value : '';
+  filterAndRenderTeacher(query);
+}
+
+function filterAndRenderTeacher(query){
+  const el = document.getElementById('teacherFileList');
+  let items = teacherCachedItems;
+
+  if(query && query.trim() && window.Fuse){
+    const fuse = new Fuse(items.map(x => ({ ...x, clsText: x.cls === 0 ? 'School-Wide' : ('Class ' + x.cls) })), {
+      keys: [
+        { name: 'title', weight: 0.4 },
+        { name: 'fileName', weight: 0.3 },
+        { name: 'message', weight: 0.2 },
+        { name: 'clsText', weight: 0.1 }
+      ],
+      threshold: 0.4,
+      ignoreLocation: true
+    });
+    items = fuse.search(query.trim()).map(r => r.item);
+  }
+
   el.innerHTML = '';
   if(!items.length){
-    el.innerHTML = '<div class="empty">No announcements or files for this class yet.</div>';
+    el.innerHTML = query && query.trim()
+      ? `<div class="empty">No announcements or files found matching "${escapeHtml(query)}".</div>`
+      : '<div class="empty">No announcements or files for this class yet.</div>';
     return;
   }
 
@@ -795,8 +842,12 @@ function buildAdminGrid(){
     sel.appendChild(o);
   });
 }
+let adminCachedItems = [];
+
 async function openAdminClass(c){
   currentClass = c;
+  const sInput = document.getElementById('adminSearchInput');
+  if(sInput) sInput.value = '';
   document.getElementById('uploadClass').value = c;
   document.getElementById('adminClassTitle').textContent = (c === 0)
     ? '📢 School-Wide Files & Announcements'
@@ -811,14 +862,38 @@ async function renderAdminList(cls){
   const all = await fetchAllItems();
 
   // Admin sees all items for this class (and school-wide, plus messages from teachers)
-  const items = all.filter(item => {
+  adminCachedItems = all.filter(item => {
     if(cls === 0) return true;
     return item.cls === cls || item.cls === 0;
   }).sort((a,b)=>b.ts - a.ts);
 
+  const query = document.getElementById('adminSearchInput') ? document.getElementById('adminSearchInput').value : '';
+  filterAndRenderAdmin(query);
+}
+
+function filterAndRenderAdmin(query){
+  const el = document.getElementById('adminFileList');
+  let items = adminCachedItems;
+
+  if(query && query.trim() && window.Fuse){
+    const fuse = new Fuse(items.map(x => ({ ...x, clsText: x.cls === 0 ? 'School-Wide' : ('Class ' + x.cls) })), {
+      keys: [
+        { name: 'title', weight: 0.4 },
+        { name: 'fileName', weight: 0.3 },
+        { name: 'message', weight: 0.2 },
+        { name: 'clsText', weight: 0.1 }
+      ],
+      threshold: 0.4,
+      ignoreLocation: true
+    });
+    items = fuse.search(query.trim()).map(r => r.item);
+  }
+
   el.innerHTML = '';
   if(!items.length){
-    el.innerHTML = '<div class="empty">No files or announcements uploaded for this class yet.</div>';
+    el.innerHTML = query && query.trim()
+      ? `<div class="empty">No files or announcements found matching "${escapeHtml(query)}".</div>`
+      : '<div class="empty">No files or announcements uploaded for this class yet.</div>';
     return;
   }
 
