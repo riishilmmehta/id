@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>St. Arnold's High School - Godhra | Study Material Portal</title>
+
+<!-- Firebase SDK (v10 compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+
 <style>
   * { margin:0; padding:0; box-sizing:border-box; font-family:'Segoe UI', Arial, sans-serif; }
   :root { --navy:#1a2a6c; --gold:#f7b731; --gold2:#e58e09; --white:#ffffff; }
@@ -30,7 +36,7 @@
   .motto { margin-left:auto; text-align:right; font-size:12px; opacity:.8; font-style:italic; }
 
   .card {
-    background:rgba(255,255,255,0.94);
+    background:rgba(255,255,255,0.95);
     border-radius:16px; padding:26px;
     box-shadow:0 10px 30px rgba(26,42,108,.18);
     margin-bottom:20px;
@@ -39,29 +45,29 @@
   .center { text-align:center; }
 
   /* Role select */
-  .roles { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:8px; }
+  .roles { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:18px; margin-top:8px; }
   @media (max-width:560px) { .roles { grid-template-columns:1fr; } }
   .role-btn {
-    border:2px solid var(--navy); border-radius:14px; padding:30px 16px;
+    border:2px solid var(--navy); border-radius:14px; padding:26px 16px;
     background:#fff; cursor:pointer; transition:.25s; text-align:center;
   }
   .role-btn:hover { transform:translateY(-4px); box-shadow:0 12px 26px rgba(26,42,108,.25); background:var(--navy); color:#fff; }
-  .role-btn .icon { font-size:44px; margin-bottom:10px; }
+  .role-btn .icon { font-size:42px; margin-bottom:10px; }
   .role-btn h3 { font-size:20px; margin-bottom:6px; }
-  .role-btn p { font-size:13px; opacity:.8; }
+  .role-btn p { font-size:13px; opacity:.85; }
 
   /* Class grid */
   .class-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:12px; margin-top:6px; }
   .class-btn {
-    padding:20px 8px; border-radius:12px; border:2px solid var(--navy);
-    background:#fff; color:var(--navy); font-size:17px; font-weight:600; cursor:pointer; transition:.2s;
+    padding:18px 8px; border-radius:12px; border:2px solid var(--navy);
+    background:#fff; color:var(--navy); font-size:16px; font-weight:600; cursor:pointer; transition:.2s; text-align:center;
   }
-  .class-btn:hover { background:var(--navy); color:#fff; transform:scale(1.05); }
+  .class-btn:hover { background:var(--navy); color:#fff; transform:scale(1.04); }
 
   /* Buttons */
   .btn {
-    display:inline-block; padding:11px 22px; border-radius:10px; border:none; cursor:pointer;
-    font-size:15px; font-weight:600; transition:.2s; margin:4px;
+    display:inline-block; padding:11px 20px; border-radius:10px; border:none; cursor:pointer;
+    font-size:14px; font-weight:600; transition:.2s; margin:4px; text-decoration:none;
   }
   .btn-primary { background:var(--navy); color:#fff; }
   .btn-primary:hover { background:#2d3f8f; }
@@ -71,29 +77,54 @@
   .btn-danger:hover { background:#e74c3c; }
   .btn-back { background:#dfe4ea; color:var(--navy); }
 
-  /* File list */
-  .file-item {
-    display:flex; align-items:center; gap:12px;
-    background:#f4f6fd; border:1px solid #d5dcf5; border-radius:10px;
-    padding:12px 14px; margin-bottom:10px; flex-wrap:wrap;
-  }
-  .file-item .fname { flex:1; min-width:150px; font-weight:600; word-break:break-all; }
-  .file-item .fmeta { font-size:12px; color:#666; width:100%; }
-  .empty { text-align:center; padding:26px; color:#777; font-style:italic; }
-
-  /* Forms */
-  input[type=password], input[type=text], select {
+  /* Form elements */
+  input[type=password], input[type=text], select, textarea {
     width:100%; padding:12px; border:1.5px solid #c3cbe8; border-radius:10px;
-    font-size:15px; margin-bottom:12px; outline:none;
+    font-size:15px; margin-bottom:12px; outline:none; font-family:inherit;
   }
-  input:focus, select:focus { border-color:var(--navy); }
-  input[type=file] { margin:10px 0; }
-  .error { color:#c0392b; font-size:14px; margin-bottom:8px; display:none; }
+  textarea { resize:vertical; min-height:80px; }
+  input:focus, select:focus, textarea:focus { border-color:var(--navy); }
+  input[type=file] { margin:8px 0 12px 0; width:100%; }
+  .error { color:#c0392b; font-size:14px; margin-bottom:8px; display:none; font-weight:600; }
 
   .badge { display:inline-block; background:var(--gold); color:var(--navy); padding:4px 12px; border-radius:20px; font-size:12px; font-weight:700; margin-bottom:12px; }
   footer { text-align:center; font-size:12px; color:#555; padding:14px; }
   .photo-strip { display:flex; gap:10px; margin-bottom:20px; }
   .photo-strip img { flex:1; width:50%; height:130px; object-fit:cover; border-radius:12px; border:3px solid #fff; box-shadow:0 6px 16px rgba(0,0,0,.2); }
+
+  /* Audience Tags */
+  .tag { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:700; margin-right:6px; }
+  .tag-all { background:#e1f5fe; color:#0277bd; }
+  .tag-student { background:#e8f5e9; color:#2e7d32; }
+  .tag-teacher { background:#fff3e0; color:#ef6c00; }
+  .tag-admin { background:#f3e5f5; color:#7b1fa2; }
+
+  /* Item Cards (Announcements & PDFs) */
+  .portal-item {
+    background:#ffffff; border:1px solid #d5dcf5; border-radius:12px;
+    padding:16px; margin-bottom:14px; box-shadow:0 3px 12px rgba(26,42,108,.05);
+    transition:.2s;
+  }
+  .portal-item:hover { border-color:#a5b6ea; box-shadow:0 6px 16px rgba(26,42,108,.1); }
+  .item-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+  .item-title { font-size:16px; font-weight:700; color:var(--navy); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .item-msg { font-size:14px; color:#333; line-height:1.55; margin:10px 0; white-space:pre-wrap; background:#f9faff; padding:12px; border-radius:8px; border-left:4px solid var(--gold); }
+  .item-file {
+    display:flex; align-items:center; gap:12px;
+    background:#f4f6fd; border:1px solid #d5dcf5; border-radius:10px;
+    padding:12px 14px; margin-top:10px; flex-wrap:wrap;
+  }
+  .item-file .fname { flex:1; min-width:140px; font-weight:600; word-break:break-all; }
+  .item-file .fmeta { font-size:12px; color:#666; width:100%; }
+  .item-meta { font-size:12px; color:#777; margin-top:6px; }
+  .empty { text-align:center; padding:28px; color:#777; font-style:italic; }
+
+  /* Form container */
+  .form-box { background:#eef2ff; border-radius:12px; padding:18px; margin-bottom:20px; }
+  .form-box h3 { font-size:16px; margin-bottom:12px; color:var(--navy); display:flex; align-items:center; gap:6px; }
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:560px) { .form-row { grid-template-columns:1fr; } }
+  .field-label { display:block; font-size:12px; font-weight:600; color:var(--navy); margin-bottom:4px; }
 </style>
 <base target="_blank">
 </head>
@@ -120,12 +151,17 @@
       <div class="role-btn" onclick="showView('student-class')">
         <div class="icon">🎓</div>
         <h3>Student</h3>
-        <p>View & download study PDFs for your class</p>
+        <p>View & download study PDFs & announcements</p>
+      </div>
+      <div class="role-btn" onclick="showView('teacher-login')">
+        <div class="icon">👨‍🏫</div>
+        <h3>Teacher</h3>
+        <p>View material & post announcements</p>
       </div>
       <div class="role-btn" onclick="showView('admin-login')">
         <div class="icon">🔐</div>
         <h3>Admin</h3>
-        <p>Upload, edit or delete study material</p>
+        <p>Upload PDFs, post announcements & manage portal</p>
       </div>
     </div>
     <footer>© St. Arnold's High School, Godhra. All rights reserved.</footer>
@@ -136,17 +172,80 @@
     <span class="badge">STUDENT PANEL</span>
     <h2>Select Your Class</h2>
     <div class="class-grid" id="studentClassGrid"></div>
-    <br><button class="btn btn-back" onclick="showView('role')">← Back</button>
+    <div style="margin-top:16px;">
+      <button class="btn btn-gold" onclick="openStudentClass(0)">📢 View School-Wide Announcements (All Classes)</button>
+      <button class="btn btn-back" onclick="showView('role')">← Back</button>
+    </div>
   </div>
 
-  <!-- STUDENT: FILES -->
+  <!-- STUDENT: FILES & ANNOUNCEMENTS -->
   <div id="view-student-files" class="card" style="display:none;">
     <span class="badge">STUDENT PANEL</span>
-    <h2 id="studentClassTitle">Class Files</h2>
+    <h2 id="studentClassTitle">Class Study Material & Announcements</h2>
     <div id="studentFileList"></div>
     <br>
     <button class="btn btn-back" onclick="showView('student-class')">← Change Class</button>
     <button class="btn btn-back" onclick="showView('role')">🏠 Home</button>
+  </div>
+
+  <!-- TEACHER LOGIN -->
+  <div id="view-teacher-login" class="card" style="display:none; max-width:440px; margin:0 auto;">
+    <span class="badge">TEACHER LOGIN</span>
+    <h2>Enter Teacher Password</h2>
+    <div class="error" id="teacherLoginError">❌ Wrong password. Please try again.</div>
+    <input type="password" id="teacherPass" placeholder="Enter teacher password" onkeydown="if(event.key==='Enter')teacherLogin()">
+    <button class="btn btn-primary" style="width:100%;" onclick="teacherLogin()">Login</button>
+    <br><br><button class="btn btn-back" onclick="showView('role')">← Back</button>
+  </div>
+
+  <!-- TEACHER: SELECT CLASS -->
+  <div id="view-teacher-class" class="card" style="display:none;">
+    <span class="badge">TEACHER PANEL</span>
+    <h2>Select Class to View & Post Material</h2>
+    <div class="class-grid" id="teacherClassGrid"></div>
+    <div style="margin-top:16px;">
+      <button class="btn btn-gold" onclick="openTeacherClass(0)">📢 View School-Wide Announcements (All Classes)</button>
+      <button class="btn btn-back" onclick="teacherLogout()">← Logout</button>
+    </div>
+  </div>
+
+  <!-- TEACHER: FILES & POST ANNOUNCEMENT -->
+  <div id="view-teacher-files" class="card" style="display:none;">
+    <span class="badge">TEACHER PANEL</span>
+    <h2 id="teacherClassTitle">Class Announcements & Material</h2>
+
+    <!-- TEACHER POST BOX -->
+    <div class="form-box">
+      <h3>📢 Post Announcement / Study Material</h3>
+      <div class="form-row">
+        <div>
+          <label class="field-label">Target Class</label>
+          <select id="teacherPostClass"></select>
+        </div>
+        <div>
+          <label class="field-label">Target Audience</label>
+          <select id="teacherPostTarget">
+            <option value="All">All (Students & Teachers)</option>
+            <option value="Student">Students Only</option>
+            <option value="Admin">Admin (Direct to Admin)</option>
+          </select>
+        </div>
+      </div>
+      <label class="field-label">Title / Topic *</label>
+      <input type="text" id="teacherPostTitle" placeholder="e.g. Science Chapter 4 Revision Notes">
+      <label class="field-label">Announcement Message (Optional if attaching PDF)</label>
+      <textarea id="teacherPostMsg" placeholder="Type message for students or admin here..."></textarea>
+      <label class="field-label">Attach PDF File (Optional if text message only)</label>
+      <input type="file" id="teacherPostFile" accept="application/pdf">
+      <button class="btn btn-gold" id="teacherPostBtn" onclick="teacherPost()">Post to Portal</button>
+      <div class="error" id="teacherPostError" style="margin-top:8px;"></div>
+    </div>
+
+    <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Active Announcements & Material</h3>
+    <div id="teacherFileList"></div>
+    <br>
+    <button class="btn btn-back" onclick="showView('teacher-class')">← Change Class</button>
+    <button class="btn btn-back" onclick="teacherLogout()">🏠 Logout</button>
   </div>
 
   <!-- ADMIN LOGIN -->
@@ -162,26 +261,47 @@
   <!-- ADMIN: SELECT CLASS -->
   <div id="view-admin-class" class="card" style="display:none;">
     <span class="badge">ADMIN PANEL</span>
-    <h2>Choose a Class to Manage Files</h2>
+    <h2>Choose a Class to Manage</h2>
     <div class="class-grid" id="adminClassGrid"></div>
-    <br><button class="btn btn-back" onclick="adminLogout()">← Logout</button>
+    <div style="margin-top:16px;">
+      <button class="btn btn-gold" onclick="openAdminClass(0)">📢 School-Wide Announcements (All Classes)</button>
+      <button class="btn btn-back" onclick="adminLogout()">← Logout</button>
+    </div>
   </div>
 
-  <!-- ADMIN: FILES -->
+  <!-- ADMIN: FILES & UPLOAD/POST -->
   <div id="view-admin-files" class="card" style="display:none;">
     <span class="badge">ADMIN PANEL</span>
-    <h2 id="adminClassTitle">Manage Files</h2>
+    <h2 id="adminClassTitle">Manage Files & Announcements</h2>
 
-    <div style="background:#eef2ff; border-radius:12px; padding:16px; margin-bottom:18px;">
-      <h3 style="font-size:16px; margin-bottom:10px;">⬆️ Upload New PDF</h3>
-      <select id="uploadClass"></select>
-      <input type="text" id="pdfName" placeholder="PDF title (e.g. Chapter 3 - Maths Notes)">
+    <!-- ADMIN UPLOAD/POST BOX -->
+    <div class="form-box">
+      <h3>⬆️ Upload PDF or Post Announcement</h3>
+      <div class="form-row">
+        <div>
+          <label class="field-label">Class</label>
+          <select id="uploadClass"></select>
+        </div>
+        <div>
+          <label class="field-label">Target Audience</label>
+          <select id="uploadTarget">
+            <option value="All">All (Students & Teachers)</option>
+            <option value="Student">Students Only</option>
+            <option value="Teacher">Teachers Only</option>
+          </select>
+        </div>
+      </div>
+      <label class="field-label">Title / Subject *</label>
+      <input type="text" id="pdfName" placeholder="Title (e.g. Chapter 3 - Maths Notes / Holiday Notice)">
+      <label class="field-label">Announcement Message (Optional if uploading PDF)</label>
+      <textarea id="adminMessage" placeholder="Type announcement message here (optional if uploading PDF only)..."></textarea>
+      <label class="field-label">Choose PDF File (Optional if posting text message only)</label>
       <input type="file" id="pdfFile" accept="application/pdf">
-      <button class="btn btn-gold" onclick="uploadPdf()">Upload PDF</button>
+      <button class="btn btn-gold" id="adminUploadBtn" onclick="uploadAdminItem()">Publish to Portal</button>
       <div class="error" id="uploadError" style="margin-top:8px;"></div>
     </div>
 
-    <h3 style="font-size:16px; margin-bottom:10px;">📁 Uploaded Files</h3>
+    <h3 style="font-size:16px; margin-bottom:12px; color:var(--navy);">📁 Uploaded Files & Announcements</h3>
     <div id="adminFileList"></div>
     <br>
     <button class="btn btn-back" onclick="showView('admin-class')">← Change Class</button>
@@ -191,174 +311,660 @@
 </div>
 
 <script>
-/* ================= INDEXEDDB FILE STORE ================= */
-const DB_NAME='stArnoldDB', STORE='pdfs';
-let db;
-function openDB(){
-  return new Promise((res,rej)=>{
-    const r=indexedDB.open(DB_NAME,1);
-    r.onupgradeneeded=e=>{ e.target.result.createObjectStore(STORE,{keyPath:'id',autoIncrement:true}); };
-    r.onsuccess=e=>{ db=e.target.result; res(); };
-    r.onerror=e=>rej(e);
+/* ================= FIREBASE DATABASE & STORAGE ================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyBX9RYQLkkDAMJXRX6TgtwsU_-ioCPi-WQ",
+  authDomain: "st-arnolds-id-portal.firebaseapp.com",
+  projectId: "st-arnolds-id-portal",
+  storageBucket: "st-arnolds-id-portal.firebasestorage.app",
+  messagingSenderId: "830933871535",
+  appId: "1:830933871535:web:b9d98e85bc7ebf46049d5a",
+  measurementId: "G-WBZ1J8XLTX"
+};
+
+let db = null;
+let storage = null;
+let isFirebaseReady = false;
+
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  storage = firebase.storage();
+  isFirebaseReady = true;
+} catch(e) {
+  console.warn("Firebase initialization notice:", e);
+}
+
+/* ================= INDEXEDDB LOCAL FALLBACK ================= */
+const DB_NAME='stArnoldDB', STORE='items';
+let idb;
+function openIDB(){
+  return new Promise((res)=>{
+    const r=indexedDB.open(DB_NAME, 2);
+    r.onupgradeneeded=e=>{
+      const d=e.target.result;
+      if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+    };
+    r.onsuccess=e=>{ idb=e.target.result; res(); };
+    r.onerror=()=>res();
   });
 }
-function tx(mode){ return db.transaction(STORE,mode).objectStore(STORE); }
-const getAll=()=>new Promise(res=>{ const out=[]; tx('readonly').openCursor().onsuccess=e=>{ const c=e.target.result; if(c){out.push(c.value); c.continue();} else res(out); }; });
-const addFile=f=>new Promise(res=>{ tx('readwrite').add(f).onsuccess=()=>res(); });
-const delFile=id=>new Promise(res=>{ tx('readwrite').delete(id).onsuccess=()=>res(); });
-const putFile=f=>new Promise(res=>{ tx('readwrite').put(f).onsuccess=()=>res(); });
+function idbTx(mode){ return idb.transaction(STORE,mode).objectStore(STORE); }
+const idbGetAll=()=>new Promise(res=>{
+  if(!idb) return res([]);
+  const out=[];
+  idbTx('readonly').openCursor().onsuccess=e=>{
+    const c=e.target.result;
+    if(c){ out.push(c.value); c.continue(); }
+    else res(out);
+  };
+});
+const idbAdd=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').add(item).onsuccess=()=>res(); });
+const idbDel=id=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').delete(id).onsuccess=()=>res(); });
+const idbPut=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').put(item).onsuccess=()=>res(); });
 
-const CLASSES=[1,2,3,4,5,6,7,8,9,10];
-let currentClass=null, adminOK=false, editId=null;
-const ADMIN_PASSWORD='admin@0908';
-const urlCache={};
+/* ================= DATABASE CRUD OPERATIONS ================= */
+async function fetchAllItems(){
+  if(isFirebaseReady && db){
+    try {
+      const snap = await db.collection('items').orderBy('ts', 'desc').get();
+      const list = [];
+      snap.forEach(doc => {
+        list.push({ id: doc.id, ...doc.data() });
+      });
+      return list;
+    } catch(err){
+      console.warn("Firestore fetch error, attempting fallback:", err);
+    }
+  }
+  return await idbGetAll();
+}
+
+async function saveItem(item, file){
+  // Basic Upload Validation (<15MB, PDF only)
+  if(file){
+    const isPdf = file.type==='application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if(!isPdf) throw new Error('Only PDF files (.pdf) are allowed.');
+    const maxMb = 15;
+    if(file.size > maxMb * 1024 * 1024) throw new Error('File size exceeds ' + maxMb + 'MB limit.');
+  }
+
+  let fileUrl = null;
+  let fileName = file ? file.name : null;
+  let fileSize = file ? file.size : 0;
+  let storagePath = null;
+
+  if(file && isFirebaseReady && storage){
+    try {
+      storagePath = 'pdfs/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const sRef = storage.ref(storagePath);
+      const snap = await sRef.put(file);
+      fileUrl = await snap.ref.getDownloadURL();
+    } catch(storageErr){
+      console.warn("Firebase Storage upload error:", storageErr);
+      // Fallback for smaller PDFs (< 800KB) to Data URL in Firestore if Storage rules pending
+      if(file.size < 800 * 1024){
+        fileUrl = await fileToDataUrl(file);
+      } else {
+        throw new Error('Firebase Storage upload failed: ' + (storageErr.message || 'Permission denied. Please verify Firebase Storage rules.'));
+      }
+    }
+  } else if(file){
+    fileUrl = await fileToDataUrl(file);
+  }
+
+  const docData = {
+    cls: item.cls,
+    title: item.title,
+    message: item.message || '',
+    target: item.target || 'All',
+    authorRole: item.authorRole || 'Admin',
+    type: file ? (item.message ? 'PDF & Announcement' : 'PDF') : 'Announcement',
+    fileUrl: fileUrl,
+    fileName: fileName,
+    fileSize: fileSize,
+    storagePath: storagePath,
+    ts: Date.now()
+  };
+
+  if(isFirebaseReady && db){
+    try {
+      const docRef = await db.collection('items').add(docData);
+      return docRef.id;
+    } catch(fsErr){
+      console.warn("Firestore add error, writing to local fallback:", fsErr);
+    }
+  }
+
+  // Local fallback write
+  await idbAdd({ ...docData, blob: file });
+}
+
+async function removeItem(id, storagePath){
+  if(isFirebaseReady && db){
+    try {
+      await db.collection('items').doc(id).delete();
+      if(storagePath && storage){
+        storage.ref(storagePath).delete().catch(()=>{});
+      }
+      return;
+    } catch(e){
+      console.warn("Firestore delete failed, trying local fallback:", e);
+    }
+  }
+  await idbDel(typeof id==='number'?id:parseInt(id));
+}
+
+async function updateTitle(id, newTitle){
+  if(isFirebaseReady && db && typeof id === 'string'){
+    try {
+      await db.collection('items').doc(id).update({ title: newTitle });
+      return;
+    } catch(e){
+      console.warn("Firestore update failed:", e);
+    }
+  }
+  const all = await idbGetAll();
+  const f = all.find(x=>x.id==id);
+  if(f){ f.title = newTitle; await idbPut(f); }
+}
+
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ================= APP STATE & CONFIG ================= */
+const CLASSES = [1,2,3,4,5,6,7,8,9,10];
+let currentClass = null;
+let adminOK = false;
+let teacherOK = false;
+let editId = null;
+const ADMIN_PASSWORD = 'admin@0908'; // Teacher and Admin share this password; access separated strictly by role session
 
 /* ================= NAVIGATION ================= */
 function showView(name){
   document.querySelectorAll('.wrap > div').forEach(v=>v.style.display='none');
-  document.getElementById('view-'+name).style.display='block';
+  const target = document.getElementById('view-'+name);
+  if(target) target.style.display='block';
   window.scrollTo(0,0);
+}
+
+/* ================= FORMATTERS ================= */
+function fmtSize(b){
+  if(!b || b <= 0) return '';
+  if(b<1024) return b+' B';
+  if(b<1048576) return (b/1024).toFixed(1)+' KB';
+  return (b/1048576).toFixed(2)+' MB';
+}
+function fmtDate(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+function audienceBadge(target){
+  if(target === 'Student') return '<span class="tag tag-student">🎓 For Students</span>';
+  if(target === 'Teacher') return '<span class="tag tag-teacher">👨‍🏫 For Teachers</span>';
+  if(target === 'Admin') return '<span class="tag tag-admin">🔐 For Admin</span>';
+  return '<span class="tag tag-all">👥 For All</span>';
 }
 
 /* ================= STUDENT ================= */
 function buildStudentGrid(){
-  const g=document.getElementById('studentClassGrid'); g.innerHTML='';
+  const g = document.getElementById('studentClassGrid'); g.innerHTML='';
   CLASSES.forEach(c=>{
-    const b=document.createElement('button');
-    b.className='class-btn'; b.textContent='Class '+c;
-    b.onclick=()=>openStudentClass(c);
+    const b = document.createElement('button');
+    b.className = 'class-btn'; b.textContent = 'Class '+c;
+    b.onclick = () => openStudentClass(c);
     g.appendChild(b);
   });
 }
 async function openStudentClass(c){
-  currentClass=c;
-  document.getElementById('studentClassTitle').textContent='Class '+c+' — Study PDFs';
-  await renderFileList('studentFileList',c,false);
+  currentClass = c;
+  document.getElementById('studentClassTitle').textContent = (c === 0)
+    ? '📢 School-Wide Announcements & Material'
+    : 'Class ' + c + ' — Study Material & Announcements';
+  await renderStudentList(c);
   showView('student-files');
+}
+
+async function renderStudentList(cls){
+  const el = document.getElementById('studentFileList');
+  el.innerHTML = '<div class="empty">Loading study material & announcements...</div>';
+  const all = await fetchAllItems();
+
+  // Student sees: Target is 'Student' or 'All' AND matches class or is school-wide (cls === 0)
+  const items = all.filter(item => {
+    const roleMatch = (item.target === 'Student' || item.target === 'All');
+    if(!roleMatch) return false;
+    if(cls === 0) return true;
+    return item.cls === cls || item.cls === 0;
+  }).sort((a,b)=>b.ts - a.ts);
+
+  el.innerHTML = '';
+  if(!items.length){
+    el.innerHTML = '<div class="empty">No announcements or study PDFs uploaded for this class yet.</div>';
+    return;
+  }
+
+  items.forEach(item=>{
+    const card = document.createElement('div');
+    card.className = 'portal-item';
+
+    let fileBlock = '';
+    if(item.fileUrl){
+      const sizeStr = item.fileSize ? ` • ${fmtSize(item.fileSize)}` : '';
+      fileBlock = `
+        <div class="item-file">
+          <span style="font-size:24px;">📄</span>
+          <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
+          <span class="fmeta">PDF Document${sizeStr}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
+          </div>
+        </div>`;
+    }
+
+    let msgBlock = '';
+    if(item.message){
+      msgBlock = `<div class="item-msg">${escapeHtml(item.message)}</div>`;
+    }
+
+    const clsBadge = item.cls === 0 ? '<span class="tag tag-all">School-Wide</span>' : `<span class="tag tag-student">Class ${item.cls}</span>`;
+
+    card.innerHTML = `
+      <div class="item-header">
+        <div class="item-title">
+          <span>${item.fileUrl ? '📄' : '📢'}</span>
+          <span>${escapeHtml(item.title)}</span>
+        </div>
+        <div>${clsBadge} ${audienceBadge(item.target)}</div>
+      </div>
+      ${msgBlock}
+      ${fileBlock}
+      <div class="item-meta">Posted by ${item.authorRole || 'Admin'} • ${fmtDate(item.ts)}</div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+/* ================= TEACHER ================= */
+function teacherLogin(){
+  const p = document.getElementById('teacherPass').value;
+  if(p === ADMIN_PASSWORD){
+    teacherOK = true; adminOK = false;
+    document.getElementById('teacherPass').value = '';
+    document.getElementById('teacherLoginError').style.display = 'none';
+    buildTeacherGrid();
+    showView('teacher-class');
+  } else {
+    document.getElementById('teacherLoginError').style.display = 'block';
+  }
+}
+function teacherLogout(){
+  teacherOK = false;
+  showView('role');
+}
+function buildTeacherGrid(){
+  const g = document.getElementById('teacherClassGrid'); g.innerHTML = '';
+  const sel = document.getElementById('teacherPostClass'); sel.innerHTML = '';
+
+  const optAll = document.createElement('option');
+  optAll.value = 0; optAll.textContent = 'All Classes (School-Wide)';
+  sel.appendChild(optAll);
+
+  CLASSES.forEach(c=>{
+    const b = document.createElement('button');
+    b.className = 'class-btn'; b.textContent = 'Class '+c;
+    b.onclick = () => openTeacherClass(c);
+    g.appendChild(b);
+
+    const o = document.createElement('option');
+    o.value = c; o.textContent = 'Class '+c;
+    sel.appendChild(o);
+  });
+}
+async function openTeacherClass(c){
+  currentClass = c;
+  document.getElementById('teacherPostClass').value = c;
+  document.getElementById('teacherClassTitle').textContent = (c === 0)
+    ? '📢 School-Wide Announcements & Material'
+    : 'Class ' + c + ' — Announcements & Material';
+  await renderTeacherList(c);
+  showView('teacher-files');
+}
+
+async function renderTeacherList(cls){
+  const el = document.getElementById('teacherFileList');
+  el.innerHTML = '<div class="empty">Loading announcements & material...</div>';
+  const all = await fetchAllItems();
+
+  // Teacher sees: Target is 'Teacher' or 'All' OR posted by Teacher (including Teacher -> Admin notes)
+  const items = all.filter(item => {
+    const roleMatch = (item.target === 'Teacher' || item.target === 'All' || item.authorRole === 'Teacher');
+    if(!roleMatch) return false;
+    if(cls === 0) return true;
+    return item.cls === cls || item.cls === 0;
+  }).sort((a,b)=>b.ts - a.ts);
+
+  el.innerHTML = '';
+  if(!items.length){
+    el.innerHTML = '<div class="empty">No announcements or files for this class yet.</div>';
+    return;
+  }
+
+  items.forEach(item=>{
+    const card = document.createElement('div');
+    card.className = 'portal-item';
+
+    let fileBlock = '';
+    if(item.fileUrl){
+      const sizeStr = item.fileSize ? ` • ${fmtSize(item.fileSize)}` : '';
+      fileBlock = `
+        <div class="item-file">
+          <span style="font-size:24px;">📄</span>
+          <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
+          <span class="fmeta">PDF Document${sizeStr}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
+          </div>
+        </div>`;
+    }
+
+    let msgBlock = '';
+    if(item.message){
+      msgBlock = `<div class="item-msg">${escapeHtml(item.message)}</div>`;
+    }
+
+    let deleteBtn = '';
+    if(item.authorRole === 'Teacher'){
+      deleteBtn = `<button class="btn btn-danger" style="padding:6px 14px;font-size:12px;margin-left:auto;" onclick="teacherDeleteItem('${item.id}', '${item.storagePath || ''}')">🗑 Delete</button>`;
+    }
+
+    const clsBadge = item.cls === 0 ? '<span class="tag tag-all">School-Wide</span>' : `<span class="tag tag-teacher">Class ${item.cls}</span>`;
+
+    card.innerHTML = `
+      <div class="item-header">
+        <div class="item-title">
+          <span>${item.fileUrl ? '📄' : '📢'}</span>
+          <span>${escapeHtml(item.title)}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          ${clsBadge}
+          ${audienceBadge(item.target)}
+          ${deleteBtn}
+        </div>
+      </div>
+      ${msgBlock}
+      ${fileBlock}
+      <div class="item-meta">Posted by ${item.authorRole || 'Teacher'} • ${fmtDate(item.ts)}</div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+async function teacherPost(){
+  const err = document.getElementById('teacherPostError');
+  err.style.display = 'none';
+  const btn = document.getElementById('teacherPostBtn');
+
+  const cls = parseInt(document.getElementById('teacherPostClass').value);
+  const target = document.getElementById('teacherPostTarget').value;
+  const title = document.getElementById('teacherPostTitle').value.trim();
+  const message = document.getElementById('teacherPostMsg').value.trim();
+  const fileInput = document.getElementById('teacherPostFile');
+  const file = fileInput.files[0];
+
+  if(!title){
+    err.textContent = '❌ Please enter a title or topic.';
+    err.style.display = 'block'; return;
+  }
+  if(!message && !file){
+    err.textContent = '❌ Please enter an announcement message or attach a PDF file.';
+    err.style.display = 'block'; return;
+  }
+
+  try {
+    btn.disabled = true; btn.textContent = 'Publishing...';
+    await saveItem({
+      cls: cls,
+      title: title,
+      message: message,
+      target: target,
+      authorRole: 'Teacher'
+    }, file);
+
+    document.getElementById('teacherPostTitle').value = '';
+    document.getElementById('teacherPostMsg').value = '';
+    fileInput.value = '';
+    btn.disabled = false; btn.textContent = 'Post to Portal';
+    await renderTeacherList(currentClass);
+    alert('✅ Announcement posted successfully!');
+  } catch(e){
+    btn.disabled = false; btn.textContent = 'Post to Portal';
+    err.textContent = '❌ ' + (e.message || 'Error posting announcement');
+    err.style.display = 'block';
+  }
+}
+
+async function teacherDeleteItem(id, storagePath){
+  if(!confirm('Delete this announcement permanently?')) return;
+  await removeItem(id, storagePath);
+  await renderTeacherList(currentClass);
 }
 
 /* ================= ADMIN ================= */
 function adminLogin(){
-  const p=document.getElementById('adminPass').value;
-  if(p===ADMIN_PASSWORD){
-    adminOK=true; document.getElementById('adminPass').value='';
-    document.getElementById('loginError').style.display='none';
-    buildAdminGrid(); showView('admin-class');
+  const p = document.getElementById('adminPass').value;
+  if(p === ADMIN_PASSWORD){
+    adminOK = true; teacherOK = false;
+    document.getElementById('adminPass').value = '';
+    document.getElementById('loginError').style.display = 'none';
+    buildAdminGrid();
+    showView('admin-class');
   } else {
-    document.getElementById('loginError').style.display='block';
+    document.getElementById('loginError').style.display = 'block';
   }
 }
-function adminLogout(){ adminOK=false; showView('role'); }
+function adminLogout(){
+  adminOK = false;
+  showView('role');
+}
 function buildAdminGrid(){
-  const g=document.getElementById('adminClassGrid'); g.innerHTML='';
-  const sel=document.getElementById('uploadClass'); sel.innerHTML='';
+  const g = document.getElementById('adminClassGrid'); g.innerHTML = '';
+  const sel = document.getElementById('uploadClass'); sel.innerHTML = '';
+
+  const optAll = document.createElement('option');
+  optAll.value = 0; optAll.textContent = 'All Classes (School-Wide)';
+  sel.appendChild(optAll);
+
   CLASSES.forEach(c=>{
-    const b=document.createElement('button');
-    b.className='class-btn'; b.textContent='Class '+c;
-    b.onclick=()=>openAdminClass(c);
+    const b = document.createElement('button');
+    b.className = 'class-btn'; b.textContent = 'Class '+c;
+    b.onclick = () => openAdminClass(c);
     g.appendChild(b);
-    const o=document.createElement('option'); o.value=c; o.textContent='Class '+c; sel.appendChild(o);
+
+    const o = document.createElement('option');
+    o.value = c; o.textContent = 'Class '+c;
+    sel.appendChild(o);
   });
 }
 async function openAdminClass(c){
-  currentClass=c;
-  document.getElementById('uploadClass').value=c;
-  document.getElementById('adminClassTitle').textContent='Class '+c+' — Manage Files';
-  await renderFileList('adminFileList',c,true);
+  currentClass = c;
+  document.getElementById('uploadClass').value = c;
+  document.getElementById('adminClassTitle').textContent = (c === 0)
+    ? '📢 School-Wide Files & Announcements'
+    : 'Class ' + c + ' — Manage Files & Announcements';
+  await renderAdminList(c);
   showView('admin-files');
 }
 
-/* ================= FILES ================= */
-function fmtSize(b){ if(b<1024)return b+' B'; if(b<1048576)return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(2)+' MB'; }
+async function renderAdminList(cls){
+  const el = document.getElementById('adminFileList');
+  el.innerHTML = '<div class="empty">Loading files and announcements...</div>';
+  const all = await fetchAllItems();
 
-async function renderFileList(elId, cls, isAdmin){
-  const el=document.getElementById(elId);
-  el.innerHTML='<div class="empty">Loading files...</div>';
-  const files=(await getAll()).filter(f=>f.cls===cls).sort((a,b)=>b.ts-a.ts);
-  el.innerHTML='';
-  if(!files.length){ el.innerHTML='<div class="empty">No PDFs uploaded for this class yet.</div>'; return; }
-  files.forEach(f=>{
-    const d=document.createElement('div'); d.className='file-item';
-    const date=new Date(f.ts).toLocaleString();
-    let actions='';
-    if(isAdmin){
-      if(editId===f.id){
-        actions=`<input type="text" id="editName" value="{}" style="flex:1;min-width:140px;margin:0;">
-                 <button class="btn btn-gold" onclick="saveEdit()">✔ Save</button>
-                 <button class="btn btn-back" onclick="cancelEdit()">✖</button>`.replace('{}', f.name.replace(/"/g,'&quot;'));
-      } else {
-        actions=`<button class="btn btn-primary" onclick="openPdf(${f.id})">👁 View</button>
-                 <button class="btn btn-gold" onclick="startEdit(${f.id})">✏️ Edit</button>
-                 <button class="btn btn-danger" onclick="deletePdf(${f.id})">🗑 Delete</button>`;
-      }
-    } else {
-      actions=`<button class="btn btn-primary" onclick="openPdf(${f.id})">👁 View</button>
-               <button class="btn btn-gold" onclick="downloadPdf(${f.id})">⬇ Download</button>`;
+  // Admin sees all items for this class (and school-wide, plus messages from teachers)
+  const items = all.filter(item => {
+    if(cls === 0) return true;
+    return item.cls === cls || item.cls === 0;
+  }).sort((a,b)=>b.ts - a.ts);
+
+  el.innerHTML = '';
+  if(!items.length){
+    el.innerHTML = '<div class="empty">No files or announcements uploaded for this class yet.</div>';
+    return;
+  }
+
+  items.forEach(item=>{
+    const card = document.createElement('div');
+    card.className = 'portal-item';
+
+    let fileBlock = '';
+    if(item.fileUrl){
+      const sizeStr = item.fileSize ? ` • ${fmtSize(item.fileSize)}` : '';
+      fileBlock = `
+        <div class="item-file">
+          <span style="font-size:24px;">📄</span>
+          <span class="fname">${escapeHtml(item.fileName || item.title)}</span>
+          <span class="fmeta">PDF Document${sizeStr}</span>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px;">
+            <button class="btn btn-primary" onclick="viewFile('${item.fileUrl}')">👁 View</button>
+            <a class="btn btn-gold" href="${item.fileUrl}" download="${escapeHtml(item.fileName || item.title)}" target="_blank">⬇ Download</a>
+          </div>
+        </div>`;
     }
-    d.innerHTML=`<span style="font-size:24px;">📄</span>
-      <span class="fname">{}</span>
-      <span class="fmeta">{} • {} • uploaded {}</span>{}`
-      .replace('{}', f.name)
-      .replace('{}', fmtSize(f.blob.size))
-      .replace('{}', f.type)
-      .replace('{}', date)
-      .replace('{}', `<div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;">${actions}</div>`);
-    el.appendChild(d);
+
+    let msgBlock = '';
+    if(item.message){
+      msgBlock = `<div class="item-msg">${escapeHtml(item.message)}</div>`;
+    }
+
+    let titleArea = '';
+    if(editId === item.id){
+      titleArea = `
+        <div style="display:flex;gap:6px;flex:1;min-width:200px;margin-bottom:8px;">
+          <input type="text" id="editTitleInput" value="${escapeHtml(item.title)}" style="margin:0;">
+          <button class="btn btn-gold" onclick="saveAdminEdit('${item.id}')">✔ Save</button>
+          <button class="btn btn-back" onclick="cancelAdminEdit()">✖</button>
+        </div>`;
+    } else {
+      titleArea = `
+        <div class="item-title">
+          <span>${item.fileUrl ? '📄' : '📢'}</span>
+          <span>${escapeHtml(item.title)}</span>
+        </div>`;
+    }
+
+    const clsBadge = item.cls === 0 ? '<span class="tag tag-all">School-Wide</span>' : `<span class="tag tag-student">Class ${item.cls}</span>`;
+
+    card.innerHTML = `
+      <div class="item-header">
+        ${titleArea}
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          ${clsBadge}
+          ${audienceBadge(item.target)}
+          <button class="btn btn-gold" style="padding:6px 12px;font-size:12px;" onclick="startAdminEdit('${item.id}')">✏️ Edit Title</button>
+          <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;" onclick="deleteAdminItem('${item.id}', '${item.storagePath || ''}')">🗑 Delete</button>
+        </div>
+      </div>
+      ${msgBlock}
+      ${fileBlock}
+      <div class="item-meta">Posted by ${item.authorRole || 'Admin'} • ${fmtDate(item.ts)}</div>
+    `;
+    el.appendChild(card);
   });
 }
 
-function getCachedUrl(id, blob){
-  if(!urlCache[id]) urlCache[id]=URL.createObjectURL(blob);
-  return urlCache[id];
-}
-async function openPdf(id){
-  const f=(await getAll()).find(x=>x.id===id); if(!f)return;
-  window.open(getCachedUrl(id,f.blob),'_blank');
-}
-async function downloadPdf(id){
-  const f=(await getAll()).find(x=>x.id===id); if(!f)return;
-  const a=document.createElement('a');
-  a.href=getCachedUrl(id,f.blob); a.download=f.name.endsWith('.pdf')?f.name:f.name+'.pdf';
-  a.click();
-}
-async function deletePdf(id){
-  if(!confirm('Delete this PDF permanently?'))return;
-  if(urlCache[id]){ URL.revokeObjectURL(urlCache[id]); delete urlCache[id]; }
-  await delFile(id); await renderFileList('adminFileList',currentClass,true);
-}
-function startEdit(id){ editId=id; renderFileList('adminFileList',currentClass,true); }
-function cancelEdit(){ editId=null; renderFileList('adminFileList',currentClass,true); }
-async function saveEdit(){
-  const name=document.getElementById('editName').value.trim();
-  if(!name){ alert('Name cannot be empty'); return; }
-  const f=(await getAll()).find(x=>x.id===editId);
-  f.name=name; await putFile(f);
-  editId=null; await renderFileList('adminFileList',currentClass,true);
+function startAdminEdit(id){ editId = id; renderAdminList(currentClass); }
+function cancelAdminEdit(){ editId = null; renderAdminList(currentClass); }
+async function saveAdminEdit(id){
+  const newTitle = document.getElementById('editTitleInput').value.trim();
+  if(!newTitle){ alert('Title cannot be empty'); return; }
+  await updateTitle(id, newTitle);
+  editId = null;
+  await renderAdminList(currentClass);
 }
 
-async function uploadPdf(){
-  const err=document.getElementById('uploadError');
-  err.style.display='none';
-  const cls=parseInt(document.getElementById('uploadClass').value);
-  const fileInput=document.getElementById('pdfFile');
-  let name=document.getElementById('pdfName').value.trim();
-  const file=fileInput.files[0];
-  if(!file){
-    if(editUpload!==null){}
-    err.textContent='❌ Please choose a PDF file.'; err.style.display='block'; return;
+async function uploadAdminItem(){
+  const err = document.getElementById('uploadError');
+  err.style.display = 'none';
+  const btn = document.getElementById('adminUploadBtn');
+
+  const cls = parseInt(document.getElementById('uploadClass').value);
+  const target = document.getElementById('uploadTarget').value;
+  let title = document.getElementById('pdfName').value.trim();
+  const message = document.getElementById('adminMessage').value.trim();
+  const fileInput = document.getElementById('pdfFile');
+  const file = fileInput.files[0];
+
+  if(!file && !message){
+    err.textContent = '❌ Please choose a PDF file or enter an announcement message.';
+    err.style.display = 'block'; return;
   }
-  const isPdf=file.type==='application/pdf'||file.name.toLowerCase().endsWith('.pdf');
-  if(!isPdf){ err.textContent='❌ Only PDF files are allowed.'; err.style.display='block'; return; }
-  if(!name) name=file.name.replace(/\.pdf$/i,'');
-  await addFile({cls:cls, name:name, type:'PDF', blob:file, ts:Date.now()});
-  fileInput.value=''; document.getElementById('pdfName').value='';
-  await renderFileList('adminFileList',currentClass,true);
-  alert('✅ PDF uploaded successfully to Class '+cls+'!');
+  if(!title){
+    if(file) title = file.name.replace(/\.pdf$/i, '');
+    else {
+      err.textContent = '❌ Please enter a title or subject.';
+      err.style.display = 'block'; return;
+    }
+  }
+
+  try {
+    btn.disabled = true; btn.textContent = 'Publishing to Database...';
+    await saveItem({
+      cls: cls,
+      title: title,
+      message: message,
+      target: target,
+      authorRole: 'Admin'
+    }, file);
+
+    document.getElementById('pdfName').value = '';
+    document.getElementById('adminMessage').value = '';
+    fileInput.value = '';
+    btn.disabled = false; btn.textContent = 'Publish to Portal';
+    await renderAdminList(currentClass);
+    alert('✅ Published successfully to the portal database!');
+  } catch(e){
+    btn.disabled = false; btn.textContent = 'Publish to Portal';
+    err.textContent = '❌ ' + (e.message || 'Upload failed');
+    err.style.display = 'block';
+  }
 }
 
-/* ================= INIT ================= */
-let editUpload=null;
-openDB().then(()=>{ buildStudentGrid(); });
+async function deleteAdminItem(id, storagePath){
+  if(!confirm('Delete this item permanently from the database?')) return;
+  await removeItem(id, storagePath);
+  await renderAdminList(currentClass);
+}
+
+/* ================= VIEW FILE HELPER ================= */
+function viewFile(url){
+  if(!url) return;
+  window.open(url, '_blank');
+}
+
+function escapeHtml(str){
+  if(!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/* ================= INITIALIZATION ================= */
+openIDB().then(()=>{
+  buildStudentGrid();
+});
 </script>
 </body>
 </html>
