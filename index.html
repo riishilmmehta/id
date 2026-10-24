@@ -487,7 +487,27 @@ const idbPut=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').
 /* ================= DATABASE CRUD OPERATIONS ================= */
 async function fetchAllItems(){
   if(isFirebaseReady && itemsReady) return allItemsCache;
-  return await idbGetAll();
+  try {
+    if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
+      const res = await fetch(SHEET_BEST_API_URL);
+      const rows = await res.json();
+      return rows.map((r, idx) => ({
+        id: r.id || ('sheet_' + idx + '_' + (r.Timestamp ? new Date(r.Timestamp).getTime() : '')),
+        title: r.Title || '',
+        message: r.Message || '',
+        target: r.Target || 'All',
+        cls: r.Class === 'All Classes' ? 0 : (parseInt(r.Class) || 0),
+        authorRole: r.AuthorRole || 'Admin',
+        fileUrl: r.FileURL || null,
+        fileName: r.FileURL ? r.FileURL.split('/').pop() : (r.Title || null),
+        fileSize: 0,
+        ts: r.Timestamp ? new Date(r.Timestamp).getTime() : Date.now()
+      }));
+    }
+    throw new Error('Sheet URL not configured');
+  } catch(e){
+    return await idbGetAll(); // last resort only if both Firestore and Sheet fail
+  }
 }
 
 async function saveItem(item, file){
@@ -544,29 +564,54 @@ async function saveItem(item, file){
   };
 
   if(isFirebaseReady && db){
-    const docRef = await Promise.race([
-      db.collection('items').add(docData),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout — check your connection and Firestore rules.')), 10000))
-    ]);
+    try {
+      const docRef = await Promise.race([
+        db.collection('items').add(docData),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+      ]);
 
-    // Google Sheets mirror (fire-and-forget, non-blocking)
-    if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
-      fetch(SHEET_BEST_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          Timestamp: new Date(docData.ts).toLocaleString(),
-          Class: docData.cls === 0 ? 'All Classes' : docData.cls,
-          Title: docData.title,
-          Message: docData.message,
-          Target: docData.target,
-          AuthorRole: docData.authorRole,
-          FileURL: docData.fileUrl || ''
-        })
-      }).catch(err => console.warn('Sheet log failed (non-critical):', err));
+      // Mirror to Google Sheet (fire-and-forget, non-blocking)
+      if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
+        fetch(SHEET_BEST_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            Timestamp: new Date(docData.ts).toLocaleString(),
+            Class: docData.cls === 0 ? 'All Classes' : docData.cls,
+            Title: docData.title,
+            Message: docData.message,
+            Target: docData.target,
+            AuthorRole: docData.authorRole,
+            FileURL: docData.fileUrl || ''
+          })
+        }).catch(err => console.warn('Sheet log failed (non-critical):', err));
+      }
+
+      return docRef.id;
+    } catch(fsErr){
+      console.warn("Firestore failed, falling back to Google Sheet:", fsErr);
+      try {
+        if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
+          await fetch(SHEET_BEST_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              Timestamp: new Date(docData.ts).toLocaleString(),
+              Class: docData.cls === 0 ? 'All Classes' : docData.cls,
+              Title: docData.title,
+              Message: docData.message,
+              Target: docData.target,
+              AuthorRole: docData.authorRole,
+              FileURL: docData.fileUrl || ''
+            })
+          });
+          return 'sheet-fallback';
+        }
+        throw fsErr;
+      } catch(sheetErr){
+        throw new Error('Both database and backup failed. Your post was NOT saved — please check your internet connection and try again.');
+      }
     }
-
-    return docRef.id;
   }
   throw new Error('Database not connected. Your post was not saved — please check your internet connection.');
 }
