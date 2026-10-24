@@ -293,7 +293,7 @@
       <input type="text" id="teacherPostTitle" placeholder="e.g. Science Chapter 4 Revision Notes">
       <label class="field-label">Announcement Message (Optional if attaching PDF)</label>
       <textarea id="teacherPostMsg" placeholder="Type message for students or admin here..."></textarea>
-      <label class="field-label">Attach PDF File (Optional if text message only)</label>
+      <label class="field-label">Attach PDF (optional) — Max 5MB</label>
       <input type="file" id="teacherPostFile" accept="application/pdf">
       <button class="btn btn-gold" id="teacherPostBtn" onclick="teacherPost()">Post to Portal</button>
       <div class="error" id="teacherPostError" style="margin-top:8px;"></div>
@@ -361,7 +361,7 @@
       <input type="text" id="pdfName" placeholder="Title (e.g. Chapter 3 - Maths Notes / Holiday Notice)">
       <label class="field-label">Announcement Message (Optional if uploading PDF)</label>
       <textarea id="adminMessage" placeholder="Type announcement message here (optional if uploading PDF only)..."></textarea>
-      <label class="field-label">Choose PDF File (Optional if posting text message only)</label>
+      <label class="field-label">Choose PDF File (Optional if posting text message only) — Max 5MB</label>
       <input type="file" id="pdfFile" accept="application/pdf">
       <button class="btn btn-gold" id="adminUploadBtn" onclick="uploadAdminItem()">Publish to Portal</button>
       <div class="error" id="uploadError" style="margin-top:8px;"></div>
@@ -433,6 +433,25 @@ try {
   console.warn("Firebase initialization notice:", e);
 }
 
+let allItemsCache = [];
+let itemsReady = false;
+
+if(isFirebaseReady && db){
+  db.collection('items').orderBy('ts', 'desc')
+    .onSnapshot(snap => {
+      allItemsCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      itemsReady = true;
+      if(currentClass !== null){
+        const sv = document.getElementById('view-student-files');
+        const tv = document.getElementById('view-teacher-files');
+        const av = document.getElementById('view-admin-files');
+        if(sv && sv.style.display === 'block') renderStudentList(currentClass);
+        else if(tv && tv.style.display === 'block') renderTeacherList(currentClass);
+        else if(av && av.style.display === 'block') renderAdminList(currentClass);
+      }
+    }, err => console.warn('Firestore listener error:', err));
+}
+
 /* ================= INDEXEDDB LOCAL FALLBACK ================= */
 const DB_NAME='stArnoldDB', STORE='items';
 let idb;
@@ -463,27 +482,16 @@ const idbPut=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').
 
 /* ================= DATABASE CRUD OPERATIONS ================= */
 async function fetchAllItems(){
-  if(isFirebaseReady && db){
-    try {
-      const snap = await db.collection('items').orderBy('ts', 'desc').get();
-      const list = [];
-      snap.forEach(doc => {
-        list.push({ id: doc.id, ...doc.data() });
-      });
-      return list;
-    } catch(err){
-      console.warn("Firestore fetch error, attempting fallback:", err);
-    }
-  }
+  if(isFirebaseReady && itemsReady) return allItemsCache;
   return await idbGetAll();
 }
 
 async function saveItem(item, file){
-  // Basic Upload Validation (<15MB, PDF only)
+  // Basic Upload Validation (<5MB, PDF only)
   if(file){
     const isPdf = file.type==='application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if(!isPdf) throw new Error('Only PDF files (.pdf) are allowed.');
-    const maxMb = 15;
+    const maxMb = 5;
     if(file.size > maxMb * 1024 * 1024) throw new Error('File size exceeds ' + maxMb + 'MB limit.');
   }
 
@@ -526,16 +534,13 @@ async function saveItem(item, file){
   };
 
   if(isFirebaseReady && db){
-    try {
-      const docRef = await db.collection('items').add(docData);
-      return docRef.id;
-    } catch(fsErr){
-      console.warn("Firestore add error, writing to local fallback:", fsErr);
-    }
+    const docRef = await Promise.race([
+      db.collection('items').add(docData),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout — check your connection and Firestore rules.')), 10000))
+    ]);
+    return docRef.id;
   }
-
-  // Local fallback write
-  await idbAdd({ ...docData, blob: file });
+  throw new Error('Database not connected. Your post was not saved — please check your internet connection.');
 }
 
 async function removeItem(id, storagePath){
