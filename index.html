@@ -434,7 +434,17 @@ try {
 const DEFAULT_WORKER_URL = 'https://st-arnolds-portal-api.riishilmmehta.workers.dev';
 const WORKER_URL = window.ST_ARNOLDS_WORKER_URL || localStorage.getItem('st_arnolds_worker_url') || DEFAULT_WORKER_URL;
 
-// Google Sheets Mirror via sheet.best (write-only human export log)
+// Google Form Submit Fallback (Layer 3 write fallback)
+const GOOGLE_FORM_SUBMIT_URL = window.ST_ARNOLDS_FORM_URL || localStorage.getItem('st_arnolds_form_url') || 'YOUR_GOOGLE_FORM_SUBMIT_URL';
+const GOOGLE_FORM_ENTRIES = window.ST_ARNOLDS_FORM_ENTRIES || {
+  title: 'entry.XXXX',
+  message: 'entry.YYYY',
+  target: 'entry.ZZZZ',
+  cls: 'entry.WWWW',
+  fileUrl: 'entry.VVVV'
+};
+
+// Google Sheets Mirror via sheet.best (optional Layer 3 read fallback)
 const SHEET_BEST_API_URL = window.ST_ARNOLDS_SHEET_URL || localStorage.getItem('st_arnolds_sheet_url') || 'YOUR_SHEET_BEST_API_URL';
 
 let allItemsCache = [];
@@ -486,28 +496,134 @@ const idbPut=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').
 
 /* ================= DATABASE CRUD OPERATIONS ================= */
 async function fetchAllItems(){
-  if(isFirebaseReady && itemsReady) return allItemsCache;
-  try {
-    if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
-      const res = await fetch(SHEET_BEST_API_URL);
-      const rows = await res.json();
-      return rows.map((r, idx) => ({
-        id: r.id || ('sheet_' + idx + '_' + (r.Timestamp ? new Date(r.Timestamp).getTime() : '')),
-        title: r.Title || '',
-        message: r.Message || '',
-        target: r.Target || 'All',
-        cls: r.Class === 'All Classes' ? 0 : (parseInt(r.Class) || 0),
-        authorRole: r.AuthorRole || 'Admin',
-        fileUrl: r.FileURL || null,
-        fileName: r.FileURL ? r.FileURL.split('/').pop() : (r.Title || null),
-        fileSize: 0,
-        ts: r.Timestamp ? new Date(r.Timestamp).getTime() : Date.now()
-      }));
-    }
-    throw new Error('Sheet URL not configured');
-  } catch(e){
-    return await idbGetAll(); // last resort only if both Firestore and Sheet fail
+  let results = [];
+
+  // 1. Firestore cache
+  if(isFirebaseReady && itemsReady && allItemsCache.length){
+    results.push(...allItemsCache);
   }
+
+  // 2. Cloudflare KV items
+  try {
+    const res = await Promise.race([
+      fetch(WORKER_URL + '/kv-items'),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+    ]);
+    if(res.ok){
+      const kvItems = await res.json().catch(() => []);
+      if(Array.isArray(kvItems)){
+        results.push(...kvItems.map(k => ({
+          ...k,
+          id: k.id || ('kv_' + k.ts)
+        })));
+      }
+    }
+  } catch(e){
+    console.warn('KV read skipped/failed:', e);
+  }
+
+  // 3. Google Sheet read fallback
+  try {
+    if(typeof SHEET_BEST_API_URL !== 'undefined' && SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
+      const res = await Promise.race([
+        fetch(SHEET_BEST_API_URL),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+      ]);
+      if(res.ok){
+        const rows = await res.json();
+        if(Array.isArray(rows)){
+          results.push(...rows.map((r, idx) => ({
+            id: r.id || ('sheet_' + idx + '_' + (r.Timestamp ? new Date(r.Timestamp).getTime() : '')),
+            title: r.Title || '',
+            message: r.Message || '',
+            target: r.Target || 'All',
+            cls: r.Class === 'All Classes' ? 0 : (parseInt(r.Class) || 0),
+            authorRole: r.AuthorRole || 'Admin',
+            fileUrl: r.FileURL || null,
+            fileName: r.FileURL ? r.FileURL.split('/').pop() : (r.Title || null),
+            fileSize: 0,
+            ts: r.Timestamp ? new Date(r.Timestamp).getTime() : Date.now()
+          })));
+        }
+      }
+    }
+  } catch(e){
+    console.warn('Sheet read fallback skipped/failed:', e);
+  }
+
+  // 4. Local IndexedDB fallback
+  try {
+    const local = await idbGetAll();
+    if(Array.isArray(local)){
+      results.push(...local);
+    }
+  } catch(e){
+    console.warn('IndexedDB read failed:', e);
+  }
+
+  // Deduplicate by timestamp
+  const seenTs = new Set();
+  const deduped = [];
+  results.sort((a,b) => (b.ts || 0) - (a.ts || 0));
+  for(const it of results){
+    const key = it.ts || it.id;
+    if(!seenTs.has(key)){
+      seenTs.add(key);
+      deduped.push(it);
+    }
+  }
+  return deduped;
+}
+
+/* ================= 4-LAYER CASCADING WRITE ================= */
+async function writeItem(docData){
+  // 1. Try Firestore first
+  if(isFirebaseReady && db){
+    try {
+      const docRef = await Promise.race([
+        db.collection('items').add(docData),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+      ]);
+      return { id: docRef.id, source: 'firestore' };
+    } catch(e1){ console.warn('Firestore failed, trying Cloudflare KV:', e1); }
+  }
+
+  // 2. Try Cloudflare KV
+  try {
+    const kvRes = await Promise.race([
+      fetch(WORKER_URL + '/kv-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docData)
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
+    ]);
+    if(!kvRes.ok) throw new Error('KV HTTP status ' + kvRes.status);
+    return { id: 'kv-' + docData.ts, source: 'kv' };
+  } catch(e2){ console.warn('KV failed, trying Google Sheet:', e2); }
+
+  // 3. Try Google Sheet (via Form submission, not Sheet Best)
+  try {
+    if(GOOGLE_FORM_SUBMIT_URL && GOOGLE_FORM_SUBMIT_URL !== 'YOUR_GOOGLE_FORM_SUBMIT_URL'){
+      await fetch(GOOGLE_FORM_SUBMIT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: new URLSearchParams({
+          [GOOGLE_FORM_ENTRIES.title || 'entry.XXXX']: docData.title,
+          [GOOGLE_FORM_ENTRIES.message || 'entry.YYYY']: docData.message,
+          [GOOGLE_FORM_ENTRIES.target || 'entry.ZZZZ']: docData.target,
+          [GOOGLE_FORM_ENTRIES.cls || 'entry.WWWW']: String(docData.cls),
+          [GOOGLE_FORM_ENTRIES.fileUrl || 'entry.VVVV']: docData.fileUrl || ''
+        })
+      });
+      return { id: 'sheet-' + docData.ts, source: 'sheet' };
+    }
+    throw new Error('Google Form URL not configured');
+  } catch(e3){ console.warn('Sheet failed, falling back to local only:', e3); }
+
+  // 4. Last resort: local device only
+  await idbAdd({ ...docData, blob: null });
+  return { id: 'local-' + docData.ts, source: 'local', warning: true };
 }
 
 async function saveItem(item, file){
@@ -563,57 +679,7 @@ async function saveItem(item, file){
     ts: Date.now()
   };
 
-  if(isFirebaseReady && db){
-    try {
-      const docRef = await Promise.race([
-        db.collection('items').add(docData),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
-      ]);
-
-      // Mirror to Google Sheet (fire-and-forget, non-blocking)
-      if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
-        fetch(SHEET_BEST_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            Timestamp: new Date(docData.ts).toLocaleString(),
-            Class: docData.cls === 0 ? 'All Classes' : docData.cls,
-            Title: docData.title,
-            Message: docData.message,
-            Target: docData.target,
-            AuthorRole: docData.authorRole,
-            FileURL: docData.fileUrl || ''
-          })
-        }).catch(err => console.warn('Sheet log failed (non-critical):', err));
-      }
-
-      return docRef.id;
-    } catch(fsErr){
-      console.warn("Firestore failed, falling back to Google Sheet:", fsErr);
-      try {
-        if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
-          await fetch(SHEET_BEST_API_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              Timestamp: new Date(docData.ts).toLocaleString(),
-              Class: docData.cls === 0 ? 'All Classes' : docData.cls,
-              Title: docData.title,
-              Message: docData.message,
-              Target: docData.target,
-              AuthorRole: docData.authorRole,
-              FileURL: docData.fileUrl || ''
-            })
-          });
-          return 'sheet-fallback';
-        }
-        throw fsErr;
-      } catch(sheetErr){
-        throw new Error('Both database and backup failed. Your post was NOT saved — please check your internet connection and try again.');
-      }
-    }
-  }
-  throw new Error('Database not connected. Your post was not saved — please check your internet connection.');
+  return await writeItem(docData);
 }
 
 async function removeItem(id, storagePath){
@@ -957,7 +1023,7 @@ async function teacherPost(){
 
   try {
     btn.disabled = true; btn.textContent = 'Publishing...';
-    await saveItem({
+    const postRes = await saveItem({
       cls: cls,
       title: title,
       message: message,
@@ -970,7 +1036,11 @@ async function teacherPost(){
     fileInput.value = '';
     btn.disabled = false; btn.textContent = 'Post to Portal';
     await renderTeacherList(currentClass);
-    alert('✅ Announcement posted successfully!');
+    if(postRes && postRes.source === 'local'){
+      alert("⚠️ Saved on this device only — all backup services are unreachable. This won't be visible to others until you have internet and try again.");
+    } else {
+      alert('✅ Announcement posted successfully!');
+    }
   } catch(e){
     btn.disabled = false; btn.textContent = 'Post to Portal';
     err.textContent = '❌ ' + (e.message || 'Error posting announcement');
@@ -1171,7 +1241,7 @@ async function uploadAdminItem(){
 
   try {
     btn.disabled = true; btn.textContent = 'Publishing to Database...';
-    await saveItem({
+    const postRes = await saveItem({
       cls: cls,
       title: title,
       message: message,
@@ -1184,7 +1254,11 @@ async function uploadAdminItem(){
     fileInput.value = '';
     btn.disabled = false; btn.textContent = 'Publish to Portal';
     await renderAdminList(currentClass);
-    alert('✅ Published successfully to the portal database!');
+    if(postRes && postRes.source === 'local'){
+      alert("⚠️ Saved on this device only — all backup services are unreachable. This won't be visible to others until you have internet and try again.");
+    } else {
+      alert('✅ Published successfully to the portal database!');
+    }
   } catch(e){
     btn.disabled = false; btn.textContent = 'Publish to Portal';
     err.textContent = '❌ ' + (e.message || 'Upload failed');

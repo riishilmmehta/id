@@ -122,6 +122,70 @@ export default {
       }
     }
 
+    // 4. KV Items: POST /kv-items
+    if (request.method === 'POST' && (url.pathname === '/kv-items' || url.pathname === '/api/kv-items')) {
+      try {
+        if (!env.ITEMS_KV) {
+          return new Response(JSON.stringify({ error: 'ITEMS_KV namespace binding not configured in Worker' }), {
+            status: 500,
+            headers: corsHeaders(),
+          });
+        }
+        const item = await request.json().catch(() => null);
+        if (!item) {
+          return new Response(JSON.stringify({ error: 'Invalid JSON request body' }), {
+            status: 400,
+            headers: corsHeaders(),
+          });
+        }
+        const key = String(item.ts || Date.now());
+        await env.ITEMS_KV.put(key, JSON.stringify(item));
+        return new Response(JSON.stringify({ success: true, key: key, id: 'kv-' + key }), {
+          status: 200,
+          headers: corsHeaders(),
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message || 'KV write failed' }), {
+          status: 500,
+          headers: corsHeaders(),
+        });
+      }
+    }
+
+    // 5. KV Items: GET /kv-items
+    if (request.method === 'GET' && (url.pathname === '/kv-items' || url.pathname === '/api/kv-items')) {
+      try {
+        if (!env.ITEMS_KV) {
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: corsHeaders(),
+          });
+        }
+        const listResult = await env.ITEMS_KV.list();
+        const items = await Promise.all(
+          listResult.keys.map(async k => {
+            const raw = await env.ITEMS_KV.get(k.name);
+            if (!raw) return null;
+            try {
+              const parsed = JSON.parse(raw);
+              return { id: 'kv-' + (parsed.ts || k.name), ...parsed };
+            } catch {
+              return null;
+            }
+          })
+        );
+        return new Response(JSON.stringify(items.filter(Boolean)), {
+          status: 200,
+          headers: corsHeaders(),
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message || 'KV read failed' }), {
+          status: 500,
+          headers: corsHeaders(),
+        });
+      }
+    }
+
     return new Response(JSON.stringify({ error: 'Endpoint not found' }), {
       status: 404,
       headers: corsHeaders(),
