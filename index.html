@@ -434,6 +434,9 @@ try {
 const DEFAULT_WORKER_URL = 'https://st-arnolds-portal-api.riishilmmehta.workers.dev';
 const WORKER_URL = window.ST_ARNOLDS_WORKER_URL || localStorage.getItem('st_arnolds_worker_url') || DEFAULT_WORKER_URL;
 
+// Google Sheets Mirror via sheet.best (write-only human export log)
+const SHEET_BEST_API_URL = window.ST_ARNOLDS_SHEET_URL || localStorage.getItem('st_arnolds_sheet_url') || 'YOUR_SHEET_BEST_API_URL';
+
 let allItemsCache = [];
 let itemsReady = false;
 
@@ -545,6 +548,24 @@ async function saveItem(item, file){
       db.collection('items').add(docData),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Network timeout — check your connection and Firestore rules.')), 10000))
     ]);
+
+    // Google Sheets mirror (fire-and-forget, non-blocking)
+    if(SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
+      fetch(SHEET_BEST_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          Timestamp: new Date(docData.ts).toLocaleString(),
+          Class: docData.cls === 0 ? 'All Classes' : docData.cls,
+          Title: docData.title,
+          Message: docData.message,
+          Target: docData.target,
+          AuthorRole: docData.authorRole,
+          FileURL: docData.fileUrl || ''
+        })
+      }).catch(err => console.warn('Sheet log failed (non-critical):', err));
+    }
+
     return docRef.id;
   }
   throw new Error('Database not connected. Your post was not saved — please check your internet connection.');
