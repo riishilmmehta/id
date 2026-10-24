@@ -15,7 +15,6 @@
 <!-- Firebase SDK (v10 compat) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
@@ -421,17 +420,19 @@ const firebaseConfig = {
 };
 
 let db = null;
-let storage = null;
 let isFirebaseReady = false;
 
 try {
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
-  storage = firebase.storage();
   isFirebaseReady = true;
 } catch(e) {
   console.warn("Firebase initialization notice:", e);
 }
+
+// GitHub PDF Storage via Cloudflare Worker
+const DEFAULT_WORKER_URL = 'https://st-arnolds-portal-api.riishilmmehta.workers.dev';
+const WORKER_URL = window.ST_ARNOLDS_WORKER_URL || localStorage.getItem('st_arnolds_worker_url') || DEFAULT_WORKER_URL;
 
 let allItemsCache = [];
 let itemsReady = false;
@@ -500,23 +501,29 @@ async function saveItem(item, file){
   let fileSize = file ? file.size : 0;
   let storagePath = null;
 
-  if(file && isFirebaseReady && storage){
+  if(file){
     try {
-      storagePath = 'pdfs/' + Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const sRef = storage.ref(storagePath);
-      const snap = await sRef.put(file);
-      fileUrl = await snap.ref.getDownloadURL();
-    } catch(storageErr){
-      console.warn("Firebase Storage upload error:", storageErr);
-      // Fallback for smaller PDFs (< 800KB) to Data URL in Firestore if Storage rules pending
-      if(file.size < 800 * 1024){
-        fileUrl = await fileToDataUrl(file);
-      } else {
-        throw new Error('Firebase Storage upload failed: ' + (storageErr.message || 'Permission denied. Please verify Firebase Storage rules.'));
+      const base64Data = await fileToBase64(file);
+      const res = await fetch(WORKER_URL + '/api/upload-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cls: item.cls,
+          fileName: file.name,
+          base64: base64Data
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if(!res.ok || data.error){
+        throw new Error(data.error || ('GitHub upload failed with status ' + res.status));
       }
+      fileUrl = data.rawUrl || data.fileUrl || data.url;
+      fileName = data.fileName || file.name;
+      storagePath = data.path || ('uploads/' + item.cls + '/' + fileName);
+    } catch(upErr){
+      console.warn("GitHub upload error:", upErr);
+      throw new Error('PDF upload failed: ' + (upErr.message || 'Could not commit to GitHub repository.'));
     }
-  } else if(file){
-    fileUrl = await fileToDataUrl(file);
   }
 
   const docData = {
@@ -547,9 +554,6 @@ async function removeItem(id, storagePath){
   if(isFirebaseReady && db){
     try {
       await db.collection('items').doc(id).delete();
-      if(storagePath && storage){
-        storage.ref(storagePath).delete().catch(()=>{});
-      }
       return;
     } catch(e){
       console.warn("Firestore delete failed, trying local fallback:", e);
@@ -570,6 +574,19 @@ async function updateTitle(id, newTitle){
   const all = await idbGetAll();
   const f = all.find(x=>x.id==id);
   if(f){ f.title = newTitle; await idbPut(f); }
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function fileToDataUrl(file){
