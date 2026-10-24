@@ -246,7 +246,12 @@
     <span class="badge">TEACHER LOGIN</span>
     <h2>Enter Teacher Password</h2>
     <div class="error" id="teacherLoginError">❌ Wrong password. Please try again.</div>
-    <input type="password" id="teacherPass" placeholder="Enter teacher password" onkeydown="if(event.key==='Enter')teacherLogin()">
+    <div style="position:relative;">
+      <input type="password" id="teacherPass" placeholder="Enter teacher password" onkeydown="if(event.key==='Enter')teacherLogin()" style="padding-right:40px;">
+      <button type="button" onclick="togglePasswordVisibility('teacherPass', this)" 
+              aria-label="Toggle password visibility"
+              style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;">👁</button>
+    </div>
     <button class="btn btn-primary" style="width:100%;" onclick="teacherLogin()">Login</button>
     <br><br><button class="btn btn-back" onclick="showView('role')">← Back</button>
   </div>
@@ -309,7 +314,12 @@
     <span class="badge">ADMIN LOGIN</span>
     <h2>Enter Admin Password</h2>
     <div class="error" id="loginError">❌ Wrong password. Please try again.</div>
-    <input type="password" id="adminPass" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')adminLogin()">
+    <div style="position:relative;">
+      <input type="password" id="adminPass" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')adminLogin()" style="padding-right:40px;">
+      <button type="button" onclick="togglePasswordVisibility('adminPass', this)" 
+              aria-label="Toggle password visibility"
+              style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;">👁</button>
+    </div>
     <button class="btn btn-primary" style="width:100%;" onclick="adminLogin()">Login</button>
     <br><br><button class="btn btn-back" onclick="showView('role')">← Back</button>
   </div>
@@ -573,6 +583,17 @@ let adminOK = false;
 let teacherOK = false;
 let editId = null;
 const ADMIN_PASSWORD = 'admin@0908'; // Teacher and Admin share this password; access separated strictly by role session
+
+function togglePasswordVisibility(inputId, btn){
+  const input = document.getElementById(inputId);
+  if(input.type === 'password'){
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
 
 /* ================= NAVIGATION ================= */
 function showView(name){
@@ -1198,10 +1219,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-openIDB().then(()=>{
-
-  buildStudentGrid();
-});
+buildStudentGrid();
+openIDB();
 </script>
 </body>
 </html>
