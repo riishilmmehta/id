@@ -3,8 +3,8 @@
  * Enables PWA installation, offline shell caching, and offline PDF viewing.
  */
 
-const STATIC_CACHE = 'st-arnolds-shell-v1';
-const PDF_CACHE = 'st-arnolds-pdfs-v1';
+const STATIC_CACHE = 'st-arnolds-shell-v2';
+const PDF_CACHE = 'st-arnolds-pdfs-v2';
 
 const PRECACHE_ASSETS = [
   './',
@@ -15,8 +15,7 @@ const PRECACHE_ASSETS = [
   'https://cdn.jsdelivr.net/npm/fuse.js@7.0.0',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js'
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
 // Install: Pre-cache static shell & libraries
@@ -51,7 +50,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
 
   const url = req.url;
-  const isPdf = url.endsWith('.pdf') || url.includes('.pdf?') || url.includes('firebasestorage') || url.includes('/uploads/');
+  const isPdf = url.endsWith('.pdf') || url.includes('.pdf?') || url.includes('/storage/v1/object/public/') || url.includes('supabase') || url.includes('firebasestorage') || url.includes('/uploads/');
 
   // 1. PDF Documents: Cache-first with network fallback & auto-caching
   // This guarantees already-viewed PDFs are always available offline

@@ -12,9 +12,8 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 
 
-<!-- Firebase SDK (v10 compat) -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- Supabase JS Client (v2) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
@@ -408,222 +407,110 @@
 </div>
 
 <script>
-/* ================= FIREBASE DATABASE & STORAGE ================= */
-const firebaseConfig = {
-  apiKey: "AIzaSyBX9RYQLkkDAMJXRX6TgtwsU_-ioCPi-WQ",
-  authDomain: "st-arnolds-id-portal.firebaseapp.com",
-  projectId: "st-arnolds-id-portal",
-  storageBucket: "st-arnolds-id-portal.firebasestorage.app",
-  messagingSenderId: "830933871535",
-  appId: "1:830933871535:web:b9d98e85bc7ebf46049d5a",
-  measurementId: "G-WBZ1J8XLTX"
-};
+/* ================= SUPABASE DATABASE & STORAGE ================= */
+const SUPABASE_PROJECT_URL = 'https://jfvlyeeuetuxbkivxxfx.supabase.co';
+const SUPABASE_ANON_PUBLIC_KEY = 'sb_publishable_5YZqGVR6DRNfOL7BgmrRng_C7GhTY5f';
 
-let db = null;
-let isFirebaseReady = false;
+const SUPABASE_URL = window.ST_ARNOLDS_SUPABASE_URL || localStorage.getItem('st_arnolds_supabase_url') || SUPABASE_PROJECT_URL;
+const SUPABASE_ANON_KEY = window.ST_ARNOLDS_SUPABASE_KEY || localStorage.getItem('st_arnolds_supabase_key') || SUPABASE_ANON_PUBLIC_KEY;
+
+let supabase = null;
+let isSupabaseReady = false;
 
 try {
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.firestore();
-  isFirebaseReady = true;
+  if(typeof window.supabase !== 'undefined' && window.supabase.createClient && SUPABASE_URL && !SUPABASE_URL.includes('[PASTE') && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('[PASTE')){
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    isSupabaseReady = true;
+  }
 } catch(e) {
-  console.warn("Firebase initialization notice:", e);
+  console.warn("Supabase initialization notice:", e);
 }
 
-// GitHub PDF Storage via Cloudflare Worker
-const DEFAULT_WORKER_URL = 'https://st-arnolds-portal-api.riishilmmehta.workers.dev';
-const WORKER_URL = window.ST_ARNOLDS_WORKER_URL || localStorage.getItem('st_arnolds_worker_url') || DEFAULT_WORKER_URL;
+function normalizeItem(row){
+  if(!row) return row;
+  return {
+    ...row,
+    authorRole: row.authorRole || row.author_role || 'Admin',
+    author_role: row.author_role || row.authorRole || 'Admin',
+    fileUrl: row.fileUrl || row.file_url || null,
+    file_url: row.file_url || row.fileUrl || null,
+    fileName: row.fileName || row.file_name || null,
+    file_name: row.file_name || row.fileName || null,
+    fileSize: row.fileSize !== undefined ? row.fileSize : (row.file_size || 0),
+    file_size: row.file_size !== undefined ? row.file_size : (row.fileSize || 0),
+    storagePath: row.storagePath || row.storage_path || null,
+    storage_path: row.storage_path || row.storagePath || null
+  };
+}
 
-// Google Form Submit Fallback (Layer 3 write fallback)
-const GOOGLE_FORM_SUBMIT_URL = window.ST_ARNOLDS_FORM_URL || localStorage.getItem('st_arnolds_form_url') || 'YOUR_GOOGLE_FORM_SUBMIT_URL';
-const GOOGLE_FORM_ENTRIES = window.ST_ARNOLDS_FORM_ENTRIES || {
-  title: 'entry.XXXX',
-  message: 'entry.YYYY',
-  target: 'entry.ZZZZ',
-  cls: 'entry.WWWW',
-  fileUrl: 'entry.VVVV'
-};
-
-// Google Sheets Mirror via sheet.best (optional Layer 3 read fallback)
-const SHEET_BEST_API_URL = window.ST_ARNOLDS_SHEET_URL || localStorage.getItem('st_arnolds_sheet_url') || 'YOUR_SHEET_BEST_API_URL';
+function rerenderCurrentView(){
+  if(currentClass !== null){
+    const sv = document.getElementById('view-student-files');
+    const tv = document.getElementById('view-teacher-files');
+    const av = document.getElementById('view-admin-files');
+    if(sv && sv.style.display === 'block') renderStudentList(currentClass);
+    else if(tv && tv.style.display === 'block') renderTeacherList(currentClass);
+    else if(av && av.style.display === 'block') renderAdminList(currentClass);
+  }
+}
 
 let allItemsCache = [];
 let itemsReady = false;
 
-if(isFirebaseReady && db){
-  db.collection('items').orderBy('ts', 'desc')
-    .onSnapshot(snap => {
-      allItemsCache = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      itemsReady = true;
-      if(currentClass !== null){
-        const sv = document.getElementById('view-student-files');
-        const tv = document.getElementById('view-teacher-files');
-        const av = document.getElementById('view-admin-files');
-        if(sv && sv.style.display === 'block') renderStudentList(currentClass);
-        else if(tv && tv.style.display === 'block') renderTeacherList(currentClass);
-        else if(av && av.style.display === 'block') renderAdminList(currentClass);
+if(isSupabaseReady && supabase){
+  // 1. Initial fetch to populate in-memory cache
+  supabase
+    .from('items')
+    .select('*')
+    .order('ts', { ascending: false })
+    .then(({ data, error }) => {
+      if(!error && Array.isArray(data)){
+        allItemsCache = data.map(normalizeItem);
+        itemsReady = true;
+        rerenderCurrentView();
       }
-    }, err => console.warn('Firestore listener error:', err));
-}
+    });
 
-/* ================= INDEXEDDB LOCAL FALLBACK ================= */
-const DB_NAME='stArnoldDB', STORE='items';
-let idb;
-function openIDB(){
-  return new Promise((res)=>{
-    const r=indexedDB.open(DB_NAME, 2);
-    r.onupgradeneeded=e=>{
-      const d=e.target.result;
-      if(!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
-    };
-    r.onsuccess=e=>{ idb=e.target.result; res(); };
-    r.onerror=()=>res();
-  });
+  // 2. Real-time updates via items-changes channel so class switching stays instant
+  supabase.channel('items-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, payload => {
+      if(payload.eventType === 'INSERT'){
+        const item = normalizeItem(payload.new);
+        allItemsCache = [item, ...allItemsCache.filter(x => x.id !== item.id)]
+          .sort((a,b) => (b.ts || 0) - (a.ts || 0));
+      } else if(payload.eventType === 'UPDATE'){
+        const item = normalizeItem(payload.new);
+        allItemsCache = allItemsCache.map(x => x.id === item.id ? item : x);
+      } else if(payload.eventType === 'DELETE'){
+        allItemsCache = allItemsCache.filter(x => x.id !== payload.old.id);
+      }
+      itemsReady = true;
+      rerenderCurrentView();
+    })
+    .subscribe();
 }
-function idbTx(mode){ return idb.transaction(STORE,mode).objectStore(STORE); }
-const idbGetAll=()=>new Promise(res=>{
-  if(!idb) return res([]);
-  const out=[];
-  idbTx('readonly').openCursor().onsuccess=e=>{
-    const c=e.target.result;
-    if(c){ out.push(c.value); c.continue(); }
-    else res(out);
-  };
-});
-const idbAdd=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').add(item).onsuccess=()=>res(); });
-const idbDel=id=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').delete(id).onsuccess=()=>res(); });
-const idbPut=item=>new Promise(res=>{ if(!idb) return res(); idbTx('readwrite').put(item).onsuccess=()=>res(); });
 
 /* ================= DATABASE CRUD OPERATIONS ================= */
 async function fetchAllItems(){
-  let results = [];
-
-  // 1. Firestore cache
-  if(isFirebaseReady && itemsReady && allItemsCache.length){
-    results.push(...allItemsCache);
+  if(itemsReady && allItemsCache.length){
+    return allItemsCache;
   }
-
-  // 2. Cloudflare KV items
-  try {
-    const res = await Promise.race([
-      fetch(WORKER_URL + '/kv-items'),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
-    ]);
-    if(res.ok){
-      const kvItems = await res.json().catch(() => []);
-      if(Array.isArray(kvItems)){
-        results.push(...kvItems.map(k => ({
-          ...k,
-          id: k.id || ('kv_' + k.ts)
-        })));
-      }
-    }
-  } catch(e){
-    console.warn('KV read skipped/failed:', e);
-  }
-
-  // 3. Google Sheet read fallback
-  try {
-    if(typeof SHEET_BEST_API_URL !== 'undefined' && SHEET_BEST_API_URL && SHEET_BEST_API_URL !== 'YOUR_SHEET_BEST_API_URL'){
-      const res = await Promise.race([
-        fetch(SHEET_BEST_API_URL),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
-      ]);
-      if(res.ok){
-        const rows = await res.json();
-        if(Array.isArray(rows)){
-          results.push(...rows.map((r, idx) => ({
-            id: r.id || ('sheet_' + idx + '_' + (r.Timestamp ? new Date(r.Timestamp).getTime() : '')),
-            title: r.Title || '',
-            message: r.Message || '',
-            target: r.Target || 'All',
-            cls: r.Class === 'All Classes' ? 0 : (parseInt(r.Class) || 0),
-            authorRole: r.AuthorRole || 'Admin',
-            fileUrl: r.FileURL || null,
-            fileName: r.FileURL ? r.FileURL.split('/').pop() : (r.Title || null),
-            fileSize: 0,
-            ts: r.Timestamp ? new Date(r.Timestamp).getTime() : Date.now()
-          })));
-        }
-      }
-    }
-  } catch(e){
-    console.warn('Sheet read fallback skipped/failed:', e);
-  }
-
-  // 4. Local IndexedDB fallback
-  try {
-    const local = await idbGetAll();
-    if(Array.isArray(local)){
-      results.push(...local);
-    }
-  } catch(e){
-    console.warn('IndexedDB read failed:', e);
-  }
-
-  // Deduplicate by timestamp
-  const seenTs = new Set();
-  const deduped = [];
-  results.sort((a,b) => (b.ts || 0) - (a.ts || 0));
-  for(const it of results){
-    const key = it.ts || it.id;
-    if(!seenTs.has(key)){
-      seenTs.add(key);
-      deduped.push(it);
-    }
-  }
-  return deduped;
-}
-
-/* ================= 4-LAYER CASCADING WRITE ================= */
-async function writeItem(docData){
-  // 1. Try Firestore first
-  if(isFirebaseReady && db){
+  if(isSupabaseReady && supabase){
     try {
-      const docRef = await Promise.race([
-        db.collection('items').add(docData),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
-      ]);
-      return { id: docRef.id, source: 'firestore' };
-    } catch(e1){ console.warn('Firestore failed, trying Cloudflare KV:', e1); }
-  }
-
-  // 2. Try Cloudflare KV
-  try {
-    const kvRes = await Promise.race([
-      fetch(WORKER_URL + '/kv-items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(docData)
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000))
-    ]);
-    if(!kvRes.ok) throw new Error('KV HTTP status ' + kvRes.status);
-    return { id: 'kv-' + docData.ts, source: 'kv' };
-  } catch(e2){ console.warn('KV failed, trying Google Sheet:', e2); }
-
-  // 3. Try Google Sheet (via Form submission, not Sheet Best)
-  try {
-    if(GOOGLE_FORM_SUBMIT_URL && GOOGLE_FORM_SUBMIT_URL !== 'YOUR_GOOGLE_FORM_SUBMIT_URL'){
-      await fetch(GOOGLE_FORM_SUBMIT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        body: new URLSearchParams({
-          [GOOGLE_FORM_ENTRIES.title || 'entry.XXXX']: docData.title,
-          [GOOGLE_FORM_ENTRIES.message || 'entry.YYYY']: docData.message,
-          [GOOGLE_FORM_ENTRIES.target || 'entry.ZZZZ']: docData.target,
-          [GOOGLE_FORM_ENTRIES.cls || 'entry.WWWW']: String(docData.cls),
-          [GOOGLE_FORM_ENTRIES.fileUrl || 'entry.VVVV']: docData.fileUrl || ''
-        })
-      });
-      return { id: 'sheet-' + docData.ts, source: 'sheet' };
+      const { data, error } = await supabase
+        .from('items')
+        .select('*')
+        .order('ts', { ascending: false });
+      if(!error && Array.isArray(data)){
+        allItemsCache = data.map(normalizeItem);
+        itemsReady = true;
+        return allItemsCache;
+      }
+    } catch(e){
+      console.warn('Supabase fetch error:', e);
     }
-    throw new Error('Google Form URL not configured');
-  } catch(e3){ console.warn('Sheet failed, falling back to local only:', e3); }
-
-  // 4. Last resort: local device only
-  await idbAdd({ ...docData, blob: null });
-  return { id: 'local-' + docData.ts, source: 'local', warning: true };
+  }
+  return allItemsCache;
 }
 
 async function saveItem(item, file){
@@ -635,100 +522,106 @@ async function saveItem(item, file){
     if(file.size > maxMb * 1024 * 1024) throw new Error('File size exceeds ' + maxMb + 'MB limit.');
   }
 
+  if(!isSupabaseReady || !supabase){
+    throw new Error('Supabase client is not initialized. Please configure your Supabase Project URL and anon key.');
+  }
+
   let fileUrl = null;
   let fileName = file ? file.name : null;
   let fileSize = file ? file.size : 0;
   let storagePath = null;
 
   if(file){
-    try {
-      const base64Data = await fileToBase64(file);
-      const res = await fetch(WORKER_URL + '/api/upload-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cls: item.cls,
-          fileName: file.name,
-          base64: base64Data
-        })
+    const cleanName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uploadPath = `class_${item.cls}/${cleanName}`;
+
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from('materials')
+      .upload(uploadPath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: 'application/pdf'
       });
-      const data = await res.json().catch(() => ({}));
-      if(!res.ok || data.error){
-        throw new Error(data.error || ('GitHub upload failed with status ' + res.status));
-      }
-      fileUrl = data.rawUrl || data.fileUrl || data.url;
-      fileName = data.fileName || file.name;
-      storagePath = data.path || ('uploads/' + item.cls + '/' + fileName);
-    } catch(upErr){
-      console.warn("GitHub upload error:", upErr);
-      throw new Error('PDF upload failed: ' + (upErr.message || 'Could not commit to GitHub repository.'));
-    }
+
+    if(uploadErr) throw new Error('PDF upload failed: ' + uploadErr.message);
+
+    const { data: pubData } = supabase.storage
+      .from('materials')
+      .getPublicUrl(uploadPath);
+
+    fileUrl = pubData.publicUrl;
+    fileName = file.name;
+    fileSize = file.size;
+    storagePath = uploadPath;
   }
 
   const docData = {
     cls: item.cls,
     title: item.title,
-    message: item.message || '',
+    message: item.message || null,
     target: item.target || 'All',
-    authorRole: item.authorRole || 'Admin',
-    type: file ? (item.message ? 'PDF & Announcement' : 'PDF') : 'Announcement',
-    fileUrl: fileUrl,
-    fileName: fileName,
-    fileSize: fileSize,
-    storagePath: storagePath,
+    author_role: item.authorRole || 'Admin',
+    file_url: fileUrl,
+    file_name: fileName,
+    file_size: fileSize,
+    storage_path: storagePath,
     ts: Date.now()
   };
 
-  return await writeItem(docData);
+  const { data, error } = await supabase
+    .from('items')
+    .insert([docData])
+    .select()
+    .single();
+
+  if(error) throw new Error('Database insert failed: ' + error.message);
+
+  const newItem = normalizeItem(data || docData);
+  allItemsCache = [newItem, ...allItemsCache.filter(x => x.id !== newItem.id)]
+    .sort((a,b) => (b.ts || 0) - (a.ts || 0));
+  itemsReady = true;
+
+  return newItem;
 }
 
 async function removeItem(id, storagePath){
-  if(isFirebaseReady && db){
+  if(isSupabaseReady && supabase && id){
     try {
-      await db.collection('items').doc(id).delete();
-      return;
+      const { error: dbErr } = await supabase
+        .from('items')
+        .delete()
+        .eq('id', id);
+      if(dbErr) throw dbErr;
+
+      if(storagePath){
+        await supabase.storage
+          .from('materials')
+          .remove([storagePath]);
+      }
+      allItemsCache = allItemsCache.filter(x => x.id !== id);
     } catch(e){
-      console.warn("Firestore delete failed, trying local fallback:", e);
+      console.warn("Supabase delete failed:", e);
+      throw e;
     }
   }
-  await idbDel(typeof id==='number'?id:parseInt(id));
 }
 
 async function updateTitle(id, newTitle){
-  if(isFirebaseReady && db && typeof id === 'string'){
+  if(isSupabaseReady && supabase && id){
     try {
-      await db.collection('items').doc(id).update({ title: newTitle });
-      return;
+      const { error } = await supabase
+        .from('items')
+        .update({ title: newTitle })
+        .eq('id', id);
+      if(error) throw error;
+      allItemsCache = allItemsCache.map(x => x.id === id ? { ...x, title: newTitle } : x);
     } catch(e){
-      console.warn("Firestore update failed:", e);
+      console.warn("Supabase update failed:", e);
+      throw e;
     }
   }
-  const all = await idbGetAll();
-  const f = all.find(x=>x.id==id);
-  if(f){ f.title = newTitle; await idbPut(f); }
 }
 
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      const base64 = dataUrl.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function fileToDataUrl(file){
-  return new Promise((resolve,reject)=>{
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 /* ================= APP STATE & CONFIG ================= */
 const CLASSES = [1,2,3,4,5,6,7,8,9,10];
@@ -1023,7 +916,7 @@ async function teacherPost(){
 
   try {
     btn.disabled = true; btn.textContent = 'Publishing...';
-    const postRes = await saveItem({
+    await saveItem({
       cls: cls,
       title: title,
       message: message,
@@ -1036,11 +929,7 @@ async function teacherPost(){
     fileInput.value = '';
     btn.disabled = false; btn.textContent = 'Post to Portal';
     await renderTeacherList(currentClass);
-    if(postRes && postRes.source === 'local'){
-      alert("⚠️ Saved on this device only — all backup services are unreachable. This won't be visible to others until you have internet and try again.");
-    } else {
-      alert('✅ Announcement posted successfully!');
-    }
+    alert('✅ Announcement posted successfully!');
   } catch(e){
     btn.disabled = false; btn.textContent = 'Post to Portal';
     err.textContent = '❌ ' + (e.message || 'Error posting announcement');
@@ -1241,7 +1130,7 @@ async function uploadAdminItem(){
 
   try {
     btn.disabled = true; btn.textContent = 'Publishing to Database...';
-    const postRes = await saveItem({
+    await saveItem({
       cls: cls,
       title: title,
       message: message,
@@ -1254,11 +1143,7 @@ async function uploadAdminItem(){
     fileInput.value = '';
     btn.disabled = false; btn.textContent = 'Publish to Portal';
     await renderAdminList(currentClass);
-    if(postRes && postRes.source === 'local'){
-      alert("⚠️ Saved on this device only — all backup services are unreachable. This won't be visible to others until you have internet and try again.");
-    } else {
-      alert('✅ Published successfully to the portal database!');
-    }
+    alert('✅ Published successfully to the portal database!');
   } catch(e){
     btn.disabled = false; btn.textContent = 'Publish to Portal';
     err.textContent = '❌ ' + (e.message || 'Upload failed');
@@ -1382,7 +1267,6 @@ if ('serviceWorker' in navigator) {
 }
 
 buildStudentGrid();
-openIDB();
 </script>
 </body>
 </html>
