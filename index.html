@@ -414,12 +414,16 @@ const SUPABASE_ANON_PUBLIC_KEY = 'sb_publishable_5YZqGVR6DRNfOL7BgmrRng_C7GhTY5f
 const SUPABASE_URL = window.ST_ARNOLDS_SUPABASE_URL || localStorage.getItem('st_arnolds_supabase_url') || SUPABASE_PROJECT_URL;
 const SUPABASE_ANON_KEY = window.ST_ARNOLDS_SUPABASE_KEY || localStorage.getItem('st_arnolds_supabase_key') || SUPABASE_ANON_PUBLIC_KEY;
 
-let supabase = null;
+let supabaseClient = null;
 let isSupabaseReady = false;
 
 try {
   if(typeof window.supabase !== 'undefined' && window.supabase.createClient && SUPABASE_URL && !SUPABASE_URL.includes('[PASTE') && SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('[PASTE')){
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.supabaseClient = supabaseClient;
+    if(typeof window.supabase.channel !== 'function'){
+      window.supabase.channel = (...args) => supabaseClient.channel(...args);
+    }
     isSupabaseReady = true;
   }
 } catch(e) {
@@ -457,9 +461,9 @@ function rerenderCurrentView(){
 let allItemsCache = [];
 let itemsReady = false;
 
-if(isSupabaseReady && supabase){
+if(isSupabaseReady && supabaseClient){
   // 1. Initial fetch to populate in-memory cache
-  supabase
+  supabaseClient
     .from('items')
     .select('*')
     .order('ts', { ascending: false })
@@ -472,7 +476,7 @@ if(isSupabaseReady && supabase){
     });
 
   // 2. Real-time updates via items-changes channel so class switching stays instant
-  supabase.channel('items-changes')
+  supabaseClient.channel('items-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, payload => {
       if(payload.eventType === 'INSERT'){
         const item = normalizeItem(payload.new);
@@ -495,9 +499,9 @@ async function fetchAllItems(){
   if(itemsReady && allItemsCache.length){
     return allItemsCache;
   }
-  if(isSupabaseReady && supabase){
+  if(isSupabaseReady && supabaseClient){
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('items')
         .select('*')
         .order('ts', { ascending: false });
@@ -522,7 +526,7 @@ async function saveItem(item, file){
     if(file.size > maxMb * 1024 * 1024) throw new Error('File size exceeds ' + maxMb + 'MB limit.');
   }
 
-  if(!isSupabaseReady || !supabase){
+  if(!isSupabaseReady || !supabaseClient){
     throw new Error('Supabase client is not initialized. Please configure your Supabase Project URL and anon key.');
   }
 
@@ -535,7 +539,7 @@ async function saveItem(item, file){
     const cleanName = Date.now() + '_' + file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uploadPath = `class_${item.cls}/${cleanName}`;
 
-    const { data: uploadData, error: uploadErr } = await supabase.storage
+    const { data: uploadData, error: uploadErr } = await supabaseClient.storage
       .from('materials')
       .upload(uploadPath, file, {
         cacheControl: '3600',
@@ -545,7 +549,7 @@ async function saveItem(item, file){
 
     if(uploadErr) throw new Error('PDF upload failed: ' + uploadErr.message);
 
-    const { data: pubData } = supabase.storage
+    const { data: pubData } = supabaseClient.storage
       .from('materials')
       .getPublicUrl(uploadPath);
 
@@ -568,7 +572,7 @@ async function saveItem(item, file){
     ts: Date.now()
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseClient
     .from('items')
     .insert([docData])
     .select()
@@ -585,16 +589,16 @@ async function saveItem(item, file){
 }
 
 async function removeItem(id, storagePath){
-  if(isSupabaseReady && supabase && id){
+  if(isSupabaseReady && supabaseClient && id){
     try {
-      const { error: dbErr } = await supabase
+      const { error: dbErr } = await supabaseClient
         .from('items')
         .delete()
         .eq('id', id);
       if(dbErr) throw dbErr;
 
       if(storagePath){
-        await supabase.storage
+        await supabaseClient.storage
           .from('materials')
           .remove([storagePath]);
       }
@@ -607,9 +611,9 @@ async function removeItem(id, storagePath){
 }
 
 async function updateTitle(id, newTitle){
-  if(isSupabaseReady && supabase && id){
+  if(isSupabaseReady && supabaseClient && id){
     try {
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from('items')
         .update({ title: newTitle })
         .eq('id', id);
@@ -679,8 +683,12 @@ function buildStudentGrid(){
     g.appendChild(b);
   });
 }
+let studentCachedItems = [];
+
 async function openStudentClass(c){
   currentClass = c;
+  const sInput = document.getElementById('studentSearchInput');
+  if(sInput) sInput.value = '';
   document.getElementById('studentClassTitle').textContent = (c === 0)
     ? '📢 School-Wide Announcements & Material'
     : 'Class ' + c + ' — Study Material & Announcements';
@@ -694,16 +702,40 @@ async function renderStudentList(cls){
   const all = await fetchAllItems();
 
   // Student sees: Target is 'Student' or 'All' AND matches class or is school-wide (cls === 0)
-  const items = all.filter(item => {
+  studentCachedItems = all.filter(item => {
     const roleMatch = (item.target === 'Student' || item.target === 'All');
     if(!roleMatch) return false;
     if(cls === 0) return true;
     return item.cls === cls || item.cls === 0;
   }).sort((a,b)=>b.ts - a.ts);
 
+  const query = document.getElementById('studentSearchInput') ? document.getElementById('studentSearchInput').value : '';
+  filterAndRenderStudent(query);
+}
+
+function filterAndRenderStudent(query){
+  const el = document.getElementById('studentFileList');
+  let items = studentCachedItems;
+
+  if(query && query.trim() && window.Fuse){
+    const fuse = new Fuse(items.map(x => ({ ...x, clsText: x.cls === 0 ? 'School-Wide' : ('Class ' + x.cls) })), {
+      keys: [
+        { name: 'title', weight: 0.4 },
+        { name: 'fileName', weight: 0.3 },
+        { name: 'message', weight: 0.2 },
+        { name: 'clsText', weight: 0.1 }
+      ],
+      threshold: 0.4,
+      ignoreLocation: true
+    });
+    items = fuse.search(query.trim()).map(r => r.item);
+  }
+
   el.innerHTML = '';
   if(!items.length){
-    el.innerHTML = '<div class="empty">No announcements or study PDFs uploaded for this class yet.</div>';
+    el.innerHTML = query && query.trim()
+      ? `<div class="empty">No announcements or study PDFs found matching "${escapeHtml(query)}".</div>`
+      : '<div class="empty">No announcements or study PDFs uploaded for this class yet.</div>';
     return;
   }
 
